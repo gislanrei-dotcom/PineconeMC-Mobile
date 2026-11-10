@@ -7,12 +7,12 @@ Projeto Android baseado no motor real do **FoldCraftLauncher**. O código modifi
 1. Acesse **Actions** no repositório.
 2. Escolha **PineconeMC Mobile - Build APK**.
 3. Toque em **Run workflow**.
-4. Abra a execução concluída. Se o status for **Success**, baixe o artifact `PineconeMC-Mobile-ARM64`.
-5. Extraia o arquivo ZIP baixado e instale `PineconeMC-Mobile.apk` no Android ARM64.
+4. Se o status for **Success**, abra a seção [Releases](https://github.com/gislanrei-dotcom/PineconeMC-Mobile/releases).
+5. Na versão de teste mais recente, baixe `PineconeMC-Mobile.apk` e instale no Android ARM64.
 
 [Ver compilações](https://github.com/gislanrei-dotcom/PineconeMC-Mobile/actions/workflows/build-android.yml)
 
-O workflow usa Android SDK 35, NDK 27, CMake, JDK 17 e Gradle Wrapper, testa integridade, arquitetura ARM64 e assinatura do APK. Quando ocorre falha, publica logs em `PineconeMC-Mobile-build-errors` sempre que disponíveis.
+O workflow usa Android SDK 35, NDK 27, CMake, JDK 17 e Gradle Wrapper, testa integridade, arquitetura ARM64 e assinatura do APK. O APK é publicado como **pré-lançamento no GitHub Releases**, pois a conta atingiu o limite de armazenamento de artifacts do Actions. Quando ocorre falha, os logs permanecem disponíveis na própria execução do GitHub Actions.
 
 ## Estado e limitações
 
