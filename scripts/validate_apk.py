@@ -1,43 +1,55 @@
 #!/usr/bin/env python3
-"""Check that Qt's diagnostic artifact is an actual ARM64 Android APK.
-
-This does not validate application runtime, game startup, or authentication.
-"""
+"""Validate ARM64 PineconeMC Android APK; does not certify playable Minecraft."""
 from pathlib import Path
 import hashlib
+import io
+import struct
 import sys
 import zipfile
 
 if len(sys.argv) != 2:
-    sys.exit("Usage: validate_apk.py <android.apk>")
-
+    sys.exit("Usage: validate_apk.py <apk_path>")
 apk = Path(sys.argv[1])
 if not apk.is_file() or apk.stat().st_size < 300_000:
-    sys.exit("APK missing or implausibly small")
+    sys.exit("Missing or implausibly small APK")
+
+def fail(message):
+    sys.exit("APK VALIDATION ERROR: " + message)
 
 with zipfile.ZipFile(apk) as archive:
     bad = archive.testzip()
     if bad:
-        sys.exit("Corrupt APK entry: " + bad)
+        fail("Corrupted ZIP member: " + bad)
     entries = set(archive.namelist())
     if "AndroidManifest.xml" not in entries:
-        sys.exit("Not an Android package: AndroidManifest.xml missing")
-    expected_jars = {f"assets/jars/{name}" for name in ("NewLaunch.jar", "NewLaunchLegacy.jar", "JavaCheck.jar")}
-    missing = expected_jars - entries
-    if missing:
-        sys.exit("Missing Pinecone Java helper JAR assets: " + str(sorted(missing)))
-    native = sorted(e for e in entries if e.startswith("lib/arm64-v8a/") and e.endswith(".so"))
-    if not native:
-        sys.exit("No ARM64 native libraries in APK")
-    if not any("elyprismlauncher" in e.lower() for e in native):
-        sys.exit("PineconeMC native library missing (Qt packaging did not include our target)")
-    legacy = [e for e in entries if any(token in e.lower() for token in ("foldcraft", "pojavlauncher", "fclcore"))]
-    if legacy:
-        sys.exit("Unexpected third-party launcher files: " + str(legacy[:8]))
+        fail("Missing AndroidManifest.xml")
+    for jar in ("NewLaunch.jar", "NewLaunchLegacy.jar", "JavaCheck.jar"):
+        path = f"assets/jars/{jar}"
+        if path not in entries:
+            fail("Missing PineconeMC helper JAR: " + path)
+        if not zipfile.is_zipfile(io.BytesIO(archive.read(path))):
+            fail("Invalid PineconeMC helper JAR: " + path)
+    all_libs = sorted(e for e in entries if e.startswith("lib/") and e.endswith(".so"))
+    arm_libs = [e for e in all_libs if e.startswith("lib/arm64-v8a/")]
+    if not arm_libs or len(all_libs) != len(arm_libs):
+        fail("APK libraries must be exclusively ARM64")
+    for path in arm_libs:
+        with archive.open(path) as stream:
+            header = stream.read(64)
+        if len(header) < 64 or header[:4] != b"\x7fELF":
+            fail("Not ELF: " + path)
+        if header[4] != 2 or header[5] != 1 or struct.unpack_from("<H", header, 18)[0] != 183:
+            fail("Expected ELF64 Little-Endian AArch64: " + path)
+    if not any("elyprismlauncher" in path.lower() for path in arm_libs):
+        fail("Original PineconeMC ARM64 library is not in the APK")
+    if any(any(term in e.lower() for term in ("foldcraft", "fclcore", "pojavlauncher")) for e in entries):
+        fail("An unrelated Android launcher was included")
 
-print("Verified Android APK archive:", apk)
-print("ARM64 libraries:", len(native))
-print("PineconeMC native library:", [e for e in native if "elyprismlauncher" in e.lower()])
-print("Size:", apk.stat().st_size, "bytes")
-print("SHA256:", hashlib.sha256(apk.read_bytes()).hexdigest())
-print("IMPORTANT: APK structure verified, not Minecraft Java execution or device startup.")
+sha = hashlib.sha256()
+with apk.open("rb") as handle:
+    for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+        sha.update(chunk)
+print("Valid Android ARM64 package structure:", apk.name)
+print("Validated ARM64 native libraries:", len(arm_libs))
+print("SHA256:", sha.hexdigest())
+print("WARNING: Java SE runtime, LWJGL, Android startup and gameplay remain untested.")
