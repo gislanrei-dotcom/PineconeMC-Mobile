@@ -159,13 +159,13 @@ patch("launcher/Application.cpp",
 # Keep the original Pinecone instance and Java launch logic. Add native
 # Android OpenJDK prerequisite checks without importing another launcher.
 patch("launcher/CMakeLists.txt",
-      "target_include_directories(Launcher_logic PUBLIC \${CMAKE_CURRENT_SOURCE_DIR})",
-      """target_include_directories(Launcher_logic PUBLIC \${CMAKE_CURRENT_SOURCE_DIR})
+      "target_include_directories(Launcher_logic PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})",
+      """target_include_directories(Launcher_logic PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 if(ANDROID)
     target_sources(Launcher_logic PRIVATE
-        "\${CMAKE_SOURCE_DIR}/../android/native/AndroidRuntime.cpp")
+        "${CMAKE_SOURCE_DIR}/../android/native/AndroidRuntime.cpp")
     target_include_directories(Launcher_logic PRIVATE
-        "\${CMAKE_SOURCE_DIR}/../android/native")
+        "${CMAKE_SOURCE_DIR}/../android/native")
 endif""")
 
 patch("launcher/launch/steps/CheckJava.cpp",
