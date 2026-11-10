@@ -1,6 +1,6 @@
 # PineconeMC Mobile — port nativo do PineconeMC (Android ARM64)
 
-**Esta branch não usa FoldCraftLauncher, PojavLauncher, FCL, HMCL ou um launcher Android como base.** Parte exclusivamente do [código-fonte oficial do PineconeMC](https://github.com/ElyPrismLauncher/Launcher), revisão fixada `9d6572797078947314b1f1737590bc157a259958`. O projeto oficial é escrito em C++20/Qt 6 e já contém o gerenciamento de instâncias, os downloads e a autenticação Ely.by.
+**Este projeto é o port nativo do PineconeMC original para Android; não utiliza nenhum launcher Android de terceiros como base.** Parte exclusivamente do [código-fonte oficial do PineconeMC](https://github.com/ElyPrismLauncher/Launcher), revisão fixada `9d6572797078947314b1f1737590bc157a259958`. O projeto oficial é escrito em C++20/Qt 6 e já contém o gerenciamento de instâncias, os downloads e a autenticação Ely.by.
 
 ## Por que ainda não há APK jogável?
 
@@ -16,8 +16,8 @@ Esta primeira etapa audita e tenta compilar o **código original** para a ABI `a
 
 ## Política
 
-Este port preserva os arquivos de licença do PineconeMC e sua árvore de código. PineconeMC em si é um fork GPL-3.0-only de Prism Launcher; usar o código oficial implica preservar esses avisos, mas **não** significa usar Prism ou FoldCraft como motor Android. Java/OpenJDK, Android SDK/NDK e Qt são runtimes/ferramentas, não launchers substitutos.
+Este port preserva os arquivos de licença do PineconeMC e sua árvore de código. PineconeMC em si é um fork GPL-3.0-only de Prism Launcher; usar o código oficial implica preservar esses avisos, e não exige motor de launcher Android externo. Java/OpenJDK, Android SDK/NDK e Qt são runtimes/ferramentas, não launchers substitutos.
 
 O APK final só poderá ser chamado de funcional depois de rodar Minecraft Java no Android real e passar pelo login Ely.by.
 
-**Branch isolada:** o histórico da `main` anterior não é usado como fonte da build.
+**Branch principal:** a `main` contém apenas os arquivos ativos deste port nativo. O código do PineconeMC é obtido diretamente do repositório oficial durante a compilação.
