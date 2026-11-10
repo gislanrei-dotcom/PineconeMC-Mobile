@@ -42,3 +42,14 @@ Esta etapa verifica apenas a compilação do próprio PineconeMC em Android. A p
 A compilação #8 `42820792083` passou integralmente pelo compilador e linker Qt Android, gerando o módulo nativo `libelyprismlauncher_arm64-v8a.so`. Foi acrescentado um pacote Android nativo com `androiddeployqt` (`cmake --build build-android --target apk`), manifesto Android próprio e validação automática por `aapt`, ZIP e ABI. O arquivo, **se a etapa de empacotamento passar**, será enviado somente como artefato `PineconeMC-Native-ARM64-UI-SMOKE-ONLY` do GitHub Actions. Não é lançado como versão jogável.
 
 **Ainda faltam** execução de OpenJDK Java Edition (JVM ARM64 Android), LWJGL/OpenGL bridge, audio/touchscreen e ensaio real de inicialização e login no aparelho. O workflow não afirma que um APK com Qt implica que Minecraft está jogável.
+
+## Mudanças após a Build #8
+
+- Novo manifesto Qt Android com pacote `ru.pineconemc.mobile`, orientação horizontal e permissão INTERNET.
+- Pipeline de `androiddeployqt` para APK ARM64 de diagnóstico; validação com `aapt` e integridade ZIP.
+- Empacotamento dos **JARs originais PineconeMC** (`NewLaunch.jar`, `NewLaunchLegacy.jar`, `JavaCheck.jar`) como assets Android, com extração atômica para a pasta privada de dados do aplicativo.
+- Caminhos de instâncias, arquivos e logs alterados no port para `QStandardPaths::AppDataLocation` no Android.
+- Limitação em GitHub Actions: desde a execução `42826699679`, novos jobs falham antes de receber um runner, inclusive um simples `echo`, usando tanto `ubuntu-24.04` quanto `ubuntu-latest`. Sem runner, o APK **não foi gerado e não foi testado**. A causa específica não está acessível; pode exigir verificar Billing & Licensing/Usage ou a mensagem na página Actions da conta.
+- Issue de acompanhamento: `https://github.com/gislanrei-dotcom/PineconeMC-Mobile/issues/1`.
+
+O runtime OpenJDK/LWJGL e o controle touchscreen ainda não foram implementados; o trabalho de pacotes e JARs é infraestrutura, não o motor de execução de Minecraft.
