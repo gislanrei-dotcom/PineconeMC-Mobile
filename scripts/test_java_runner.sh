@@ -15,7 +15,7 @@ test -f "$UPSTREAM/libraries/javacheck/JavaCheck.java"
 c++ -std=c++17 -Wall -Wextra -Werror \
   -I"$JAVA_HOME/include" -I"$JAVA_HOME/include/linux" \
   "$ROOT/android/runtime/JavaRunner.cpp" -o "$TEST_DIR/java_runner" -ldl
-javac -d "$TEST_DIR" \
+javac -encoding UTF-8 -d "$TEST_DIR" \
   "$ROOT/scripts/tests/TestMain.java" \
   "$UPSTREAM/libraries/javacheck/JavaCheck.java"
 (cd "$TEST_DIR" && jar cf JavaCheck.jar JavaCheck.class)
