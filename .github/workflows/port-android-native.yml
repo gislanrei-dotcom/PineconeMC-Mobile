@@ -38,6 +38,12 @@ jobs:
           python3 -m py_compile scripts/patch_native.py scripts/validate_apk.py
           python3 scripts/patch_native.py PineconeMC
 
+      - name: Test original JavaCheck and JNI JavaRunner on Linux host
+        shell: bash
+        run: |
+          set -euxo pipefail
+          bash scripts/test_java_runner.sh
+
       - name: Install Android cross-compiler
         shell: bash
         run: |
