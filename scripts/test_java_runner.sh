@@ -26,6 +26,10 @@ grep -qx 'PINECONE_RUNNER_OK:alpha|beta' <<< "$output"
 grep -qx 'PINECONE_OPTION:it_works' <<< "$output"
 grep -qx "PINECONE_JAVA_HOME:$JAVA_HOME" <<< "$output"
 grep -qx "PINECONE_NATIVE_PATH:$TEST_DIR/native:/minecraft/natives" <<< "$output"
+# Validate UTF-8 input including supplementary Unicode via code points.
+# Console encodings on Linux runners are not guaranteed to be UTF-8.
+unicode_output="$(PINECONE_JVM_LIBRARY="$JVM_LIB" "$RUNNER" -cp "$TEST_DIR" TestMain 'coração' '🎮')"
+grep -qx 'PINECONE_UNICODE_CODEPOINTS:63,6f,72,61,e7,e3,6f|1f3ae' <<< "$unicode_output"
 check="$(PINECONE_JVM_LIBRARY="$JVM_LIB" "$RUNNER" -jar "$TEST_DIR/JavaCheck.jar")"
 grep -q '^os.arch=' <<< "$check"
 grep -q '^java.version=' <<< "$check"
