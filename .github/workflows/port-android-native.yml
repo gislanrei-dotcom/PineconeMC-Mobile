@@ -91,6 +91,14 @@ jobs:
           set -euxo pipefail
           cmake --build build-android --parallel 3
 
+      - name: Bundle original PineconeMC icon
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p android/res/drawable
+          cp PineconeMC/program_info/io.github.elyprismlauncher.ElyPrismLauncher_256.png android/res/drawable/pineconemc_icon.png
+          file android/res/drawable/pineconemc_icon.png
+
       - name: Bundle original PineconeMC Java helper JARs in Android assets
         shell: bash
         run: |
@@ -126,6 +134,11 @@ jobs:
           test -x "$AAPT"
           "$AAPT" dump badging "$APK" > out/android-package-info.txt
           grep -F "package: name='ru.pineconemc.mobile'" out/android-package-info.txt
+          grep -F "sdkVersion:'28'" out/android-package-info.txt
+          grep -F "targetSdkVersion:'35'" out/android-package-info.txt
+          APKSIGNER="$SDK_ROOT/build-tools/35.0.0/apksigner"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --min-sdk-version 28 "$APK"
           cp "$APK" out/PineconeMC-Mobile-Android-UI-SmokeTest.apk
           sha256sum out/PineconeMC-Mobile-Android-UI-SmokeTest.apk > out/PineconeMC-Mobile-Android-UI-SmokeTest.apk.sha256
           printf '%s\\n' 'PineconeMC native Android/Qt APK; UI smoke test only.' 'Minecraft Java runtime, graphics bridge, touch input and Ely.by sign-in remain unverified.' > out/NOT-YET-PLAYABLE.txt
