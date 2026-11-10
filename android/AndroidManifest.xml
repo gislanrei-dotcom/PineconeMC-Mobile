@@ -17,6 +17,7 @@
         android:hardwareAccelerated="true"
         android:extractNativeLibs="true"
         android:label="PineconeMC Mobile"
+        android:icon="@drawable/pineconemc_icon"
         android:allowBackup="false"
         android:fullBackupOnly="false">
         <activity
