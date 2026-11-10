@@ -1,0 +1,17 @@
+name: GitHub Actions runner diagnostic
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/runner-probe.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify runner can start
+        run: |
+          echo "GitHub Actions runner started."
+          uname -a
