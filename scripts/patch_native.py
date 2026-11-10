@@ -189,4 +189,24 @@ patch("launcher/launch/steps/CheckJava.cpp",
     m_parent->instance()->settings()->set("JavaPath", runtime.javaExecutable);
 #endif""")
 
+# Optional separate OpenJDK process adapter based on JNI Invocation API.
+# Disabled by default: no Android/Bionic Java 17 libjvm.so is bundled yet.
+# This is independent PineconeMC code, not another Android launcher.
+patch("launcher/CMakeLists.txt",
+      "target_link_libraries(${Launcher_Name} PRIVATE Launcher_logic)",
+      """target_link_libraries(${Launcher_Name} PRIVATE Launcher_logic)
+if(ANDROID)
+    option(PINECONE_EXPERIMENTAL_JAVA_RUNNER "Build JNI Java runner prototype" OFF)
+    if(PINECONE_EXPERIMENTAL_JAVA_RUNNER)
+        add_executable(pinecone_java_runner
+            "${CMAKE_SOURCE_DIR}/../android/runtime/JavaRunner.cpp")
+        target_compile_features(pinecone_java_runner PRIVATE cxx_std_17)
+        target_link_libraries(pinecone_java_runner PRIVATE dl)
+        set_target_properties(pinecone_java_runner PROPERTIES
+            PREFIX "lib" OUTPUT_NAME "pinecone_java" SUFFIX ".so")
+        set_property(TARGET ${Launcher_Name} APPEND PROPERTY
+            QT_ANDROID_EXTRA_LIBS "$<TARGET_FILE:pinecone_java_runner>")
+    endif()
+endif""")
+
 print("Android CMake adjustments applied to actual PineconeMC source.")
