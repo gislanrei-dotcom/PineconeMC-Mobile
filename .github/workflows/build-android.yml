@@ -10,7 +10,7 @@ on:
       - "BUILD.md"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   android-arm64:
@@ -87,22 +87,22 @@ jobs:
           "${ANDROID_HOME}/build-tools/35.0.0/apksigner" verify --verbose dist/PineconeMC-Mobile.apk
           sha256sum dist/PineconeMC-Mobile.apk > dist/PineconeMC-Mobile.apk.sha256
 
-      - name: Upload verified APK
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: PineconeMC-Mobile-ARM64
-          path: dist/*
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Upload failure logs
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: PineconeMC-Mobile-build-errors
-          path: |
-            build.log
-            upstream/FCL/build/outputs/logs/**
-          if-no-files-found: warn
-          retention-days: 14
+      # GitHub Actions artifact storage is full for this account.
+      # Upload the tested APK directly to a GitHub prerelease instead.
+      - name: Publish installable APK as GitHub prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          TAG="pinecone-mobile-debug-${GITHUB_RUN_NUMBER}"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/PineconeMC-Mobile.apk dist/PineconeMC-Mobile.apk.sha256 --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" dist/PineconeMC-Mobile.apk dist/PineconeMC-Mobile.apk.sha256 \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "PineconeMC Mobile ARM64 - Build ${GITHUB_RUN_NUMBER}" \
+              --notes "Versão de teste compilada do FoldCraftLauncher com alterações PineconeMC. APK ARM64 assinado com chave de debug. Login Ely.by, instalação de versões e abertura de jogo ainda dependem de teste em Android real." \
+              --prerelease
+          fi
