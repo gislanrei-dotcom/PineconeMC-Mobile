@@ -36,3 +36,9 @@ PineconeMC oficialmente deriva de Prism Launcher; o port Android desta branch, p
 Esta etapa verifica apenas a compilação do próprio PineconeMC em Android. A ponte nativa para JVM, gráficos e touchscreen ainda precisa ser implementada e validada. Não divulgar um APK apenas de interface como se estivesse jogável.
 
 - A compilação nativa #4, execução `42810691586`, passou por CMake e iniciou a compilação C++ (150 de 456 objetos alcançados), mas falhou por `gamemode_client.h` (Feral GameMode exclusivo de Linux desktop). O script agora exclui esses blocos Linux do build Android sem alterar o motor PineconeMC. Nova execução: `42813154215`.
+
+## Empacotamento Android (após a compilação C++ ARM64)
+
+A compilação #8 `42820792083` passou integralmente pelo compilador e linker Qt Android, gerando o módulo nativo `libelyprismlauncher_arm64-v8a.so`. Foi acrescentado um pacote Android nativo com `androiddeployqt` (`cmake --build build-android --target apk`), manifesto Android próprio e validação automática por `aapt`, ZIP e ABI. O arquivo, **se a etapa de empacotamento passar**, será enviado somente como artefato `PineconeMC-Native-ARM64-UI-SMOKE-ONLY` do GitHub Actions. Não é lançado como versão jogável.
+
+**Ainda faltam** execução de OpenJDK Java Edition (JVM ARM64 Android), LWJGL/OpenGL bridge, audio/touchscreen e ensaio real de inicialização e login no aparelho. O workflow não afirma que um APK com Qt implica que Minecraft está jogável.

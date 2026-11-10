@@ -82,5 +82,40 @@ jobs:
           set -euxo pipefail
           cmake --build build-android --parallel 3
 
-      # Intentionally no APK upload until the real Java Edition runtime and
-      # Android graphics/input backend have been implemented and tested.
+      # Qt 6.8's 'apk' target uses androiddeployqt and Gradle to bundle the
+      # compiled original C++ application. It is NOT a functioning Java runtime.
+      - name: Create diagnostic Android APK with Qt androiddeployqt
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --build build-android --target apk --parallel 2
+
+      - name: Verify Android ARM64 APK structure and package identity
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p out
+          mapfile -t APKS < <(find build-android -type f -name '*.apk' | sort)
+          printf 'APK candidates:\\n%s\\n' "${APKS[*]}"
+          test "${#APKS[@]}" -ge 1
+          APK="${APKS[0]}"
+          python3 scripts/validate_apk.py "$APK"
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          AAPT="$SDK_ROOT/build-tools/35.0.0/aapt"
+          test -x "$AAPT"
+          "$AAPT" dump badging "$APK" > out/android-package-info.txt
+          grep -F "package: name='ru.pineconemc.mobile'" out/android-package-info.txt
+          cp "$APK" out/PineconeMC-Mobile-Android-UI-SmokeTest.apk
+          sha256sum out/PineconeMC-Mobile-Android-UI-SmokeTest.apk > out/PineconeMC-Mobile-Android-UI-SmokeTest.apk.sha256
+          printf '%s\\n' 'PineconeMC native Android/Qt APK; UI smoke test only.' 'Minecraft Java runtime, graphics bridge, touch input and Ely.by sign-in remain unverified.' > out/NOT-YET-PLAYABLE.txt
+
+      - name: Upload UNTESTED Qt UI APK for Android integration checks
+        uses: actions/upload-artifact@v4
+        with:
+          name: PineconeMC-Native-ARM64-UI-SMOKE-ONLY
+          path: out/
+          if-no-files-found: error
+          retention-days: 14
+
+      # No GitHub Release: the original PineconeMC runtime still needs Android
+      # Java Edition JVM / LWJGL graphics / touch and device testing.
