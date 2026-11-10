@@ -58,6 +58,10 @@ jobs:
           unzip -q PineconeMC-Mobile-fonte.zip "overlay/*"
           test -d overlay/FCL
           cp -a overlay/. upstream/
+          # Apply audited source-level repairs and the native Pinecone home UI.
+          cp -a patches/. upstream/
+          test -f upstream/FCL/src/main/java/com/tungsten/fcl/ui/main/PineconeHomeView.java
+          grep -q 'elyAuthenticationEndpoint("authenticate")' upstream/FCL/src/main/java/com/tungsten/fclcore/auth/authlibinjector/AuthlibInjectorProvider.java
           test -f upstream/FCL/build.gradle.kts
           test -f upstream/debug-key.jks
 
