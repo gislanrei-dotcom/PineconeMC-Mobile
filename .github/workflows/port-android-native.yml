@@ -41,7 +41,7 @@ jobs:
           "$RUNNER_TEMP/aqt-env/bin/pip" install --upgrade pip
           "$RUNNER_TEMP/aqt-env/bin/pip" install aqtinstall==3.2.1
           "$RUNNER_TEMP/aqt-env/bin/aqt" install-qt linux desktop 6.8.3 linux_gcc_64 --outputdir "$RUNNER_TEMP/qt"
-          "$RUNNER_TEMP/aqt-env/bin/aqt" install-qt linux android 6.8.3 android_arm64_v8a --outputdir "$RUNNER_TEMP/qt"
+          "$RUNNER_TEMP/aqt-env/bin/aqt" install-qt linux android 6.8.3 android_arm64_v8a --modules qtnetworkauth --outputdir "$RUNNER_TEMP/qt"
           test -f "$RUNNER_TEMP/qt/6.8.3/android_arm64_v8a/lib/cmake/Qt6/qt.toolchain.cmake"
       - name: Build original native dependencies for Android
         shell: bash
