@@ -3,7 +3,16 @@ name: Native PineconeMC Android ARM64 - Portability build
 on:
   push:
     branches: [main]
+    paths:
+      - '.github/workflows/port-android-native.yml'
+      - 'scripts/**'
+      - 'android/**'
   workflow_dispatch:
+
+# Avoid launching multiple 20-minute native toolchain builds for adjacent commits.
+concurrency:
+  group: native-android-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
