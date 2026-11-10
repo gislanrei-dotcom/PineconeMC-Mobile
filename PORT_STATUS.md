@@ -53,3 +53,7 @@ A compilação #8 `42820792083` passou integralmente pelo compilador e linker Qt
 - Issue de acompanhamento: `https://github.com/gislanrei-dotcom/PineconeMC-Mobile/issues/1`.
 
 O runtime OpenJDK/LWJGL e o controle touchscreen ainda não foram implementados; o trabalho de pacotes e JARs é infraestrutura, não o motor de execução de Minecraft.
+
+## Detector de runtime Java 17 no Android
+
+O arquivo `android/native/AndroidRuntime.cpp` consulta `nativeLibraryDir` via JNI e verifica a presença do futuro executável Java, `libjvm.so` e módulos Java 17. `CheckJava.cpp` passa a exibir erro explícito em português se o runtime ainda não estiver disponível, em vez de tentar usar o Java desktop. **O runtime e a ponte LWJGL ainda não estão implementados.** O Android impede executar binários de diretórios graváveis do app com target SDK moderno; o Java executável terá de ser incluído no APK.

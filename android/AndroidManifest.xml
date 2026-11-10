@@ -15,6 +15,7 @@
     <application
         android:name="org.qtproject.qt.android.bindings.QtApplication"
         android:hardwareAccelerated="true"
+        android:extractNativeLibs="true"
         android:label="PineconeMC Mobile"
         android:allowBackup="false"
         android:fullBackupOnly="false">
