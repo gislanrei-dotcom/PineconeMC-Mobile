@@ -22,6 +22,10 @@ with zipfile.ZipFile(apk) as archive:
     entries = set(archive.namelist())
     if "AndroidManifest.xml" not in entries:
         sys.exit("Not an Android package: AndroidManifest.xml missing")
+    expected_jars = {f"assets/jars/{name}" for name in ("NewLaunch.jar", "NewLaunchLegacy.jar", "JavaCheck.jar")}
+    missing = expected_jars - entries
+    if missing:
+        sys.exit("Missing Pinecone Java helper JAR assets: " + str(sorted(missing)))
     native = sorted(e for e in entries if e.startswith("lib/arm64-v8a/") and e.endswith(".so"))
     if not native:
         sys.exit("No ARM64 native libraries in APK")
