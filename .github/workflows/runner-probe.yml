@@ -8,10 +8,17 @@ on:
 permissions:
   contents: read
 jobs:
-  probe:
+  probe-linux:
     runs-on: ubuntu-latest
+    timeout-minutes: 3
     steps:
-      - name: Verify runner can start
-        run: |
-          echo "GitHub Actions runner started."
-          uname -a
+      - name: Confirm Ubuntu runner was allocated
+        shell: bash
+        run: echo "CI_PROBE_LINUX_OK"
+  probe-windows:
+    runs-on: windows-latest
+    timeout-minutes: 3
+    steps:
+      - name: Confirm Windows runner was allocated
+        shell: pwsh
+        run: Write-Output "CI_PROBE_WINDOWS_OK"
