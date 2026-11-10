@@ -2,6 +2,14 @@
 
 **Este projeto é o port nativo do PineconeMC original para Android; não utiliza nenhum launcher Android de terceiros como base.** Parte exclusivamente do [código-fonte oficial do PineconeMC](https://github.com/ElyPrismLauncher/Launcher), revisão fixada `9d6572797078947314b1f1737590bc157a259958`. O projeto oficial é escrito em C++20/Qt 6 e já contém o gerenciamento de instâncias, os downloads e a autenticação Ely.by.
 
+## Estado atualizado em 10/11/2026
+
+**Concluído no código:** C++/Qt oficial compilado para Android ARM64 na Build #8; empacotamento Qt APK de diagnóstico preparado; manifesto, armazenamento interno Android, JARs de inicialização PineconeMC, ícone oficial, verificação de ELF ARM64 e assinatura. O detector do OpenJDK está ligado ao `CheckJava`, e existe um protótipo nativo independente de inicializador Java baseado em `JNI_CreateJavaVM`, disponível em `android/runtime/JavaRunner.cpp` (desativado na compilação padrão).
+
+**Pendente:** produzir OpenJDK para Android/Bionic, incluir `libjvm.so` e módulos da JVM, compilar/testar o processo Java, integrar LWJGL, renderização, áudio e controles touchscreen, e validar o launcher no celular. **Nenhum APK foi gerado ou publicado a partir das alterações recentes** e não foi verificado gameplay nem login Ely.by.
+
+**Bloqueio atual do CI:** GitHub Actions não está atribuindo runners para novos jobs (`runner_id=0`, `steps=[]`), inclusive num teste mínimo de shell sem dependências. A configuração de cobrança/limites do GitHub pode explicar isso, mas não foi possível confirmar pelo conector. Consultar [Actions](https://github.com/gislanrei-dotcom/PineconeMC-Mobile/actions) e a [issue de acompanhamento](https://github.com/gislanrei-dotcom/PineconeMC-Mobile/issues/1).
+
 ## Por que ainda não há APK jogável?
 
 O PineconeMC oficial é um aplicativo desktop. Os passos `JavaCheck` e `LaunchTask` executam Java como processo externo (`QProcess`). Android não fornece esse ambiente Java Edition nem as bibliotecas GLFW/LWJGL apropriadas. Portar o Qt para Android **não** faz o Minecraft rodar por si só.
