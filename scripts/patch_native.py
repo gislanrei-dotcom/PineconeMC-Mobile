@@ -41,6 +41,23 @@ patch("launcher/CMakeLists.txt",
       "target_link_libraries(${Launcher_Name} Launcher_logic)",
       "target_link_libraries(${Launcher_Name} PRIVATE Launcher_logic)")
 
+# Qt's Android build also defines Q_OS_LINUX. Feral GameMode and Linux
+# desktop dlopen-based library discovery do not exist on Android.
+# Preserve the Pinecone launcher logic; omit only OS-specific desktop hooks.
+def exclude_desktop_gamemode(path, expected):
+    f = root / path
+    data = f.read_text(encoding="utf-8")
+    old = "#ifdef Q_OS_LINUX"
+    count = data.count(old)
+    if count != expected:
+        raise SystemExit(f"ABORT: expected {expected} desktop Linux blocks in {path}, got {count}")
+    f.write_text(data.replace(old, "#if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)"),
+                 encoding="utf-8")
+    print(f"Guarded {count} desktop Linux blocks for Android in {path}")
+
+exclude_desktop_gamemode("launcher/Application.cpp", 3)
+exclude_desktop_gamemode("launcher/minecraft/launch/LauncherPartLaunch.cpp", 2)
+
 # Android is UNIX to CMake, but not the Linux desktop: avoid deployment of
 # .desktop files/man pages, and don't link QtDBus if not packaged for Android.
 patch("CMakeLists.txt",
