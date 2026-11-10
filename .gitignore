@@ -1,0 +1,4 @@
+build-android/
+PineconeMC/
+.gradle/
+*.apk
