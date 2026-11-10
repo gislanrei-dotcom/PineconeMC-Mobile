@@ -223,16 +223,17 @@ public final class PineconeHomeView extends LinearLayout {
         Account account = Accounts.getSelectedAccount();
         accountLabel.setText(account == null ? "Sem conta" : account.getCharacter());
         Profile profile = Profiles.getSelectedProfile();
-        List<Version> versions = new ArrayList<>(profile.getRepository().getVersions());
-        versions.sort(Comparator.comparing(Version::getId, String.CASE_INSENSITIVE_ORDER));
-        countLabel.setText(versions.size() + " versões");
         library.removeAllViews();
         if (!profile.getRepository().isLoaded()) {
+            countLabel.setText("Carregando...");
             library.addView(text("Carregando instâncias…", 14, MUTED, false));
-            profile.getRepository().refreshVersionsAsync().start();
+            // Repositories are initialized by Profiles; never enumerate before isLoaded.
             refreshDetails();
             return;
         }
+        List<Version> versions = new ArrayList<>(profile.getRepository().getVersions());
+        versions.sort(Comparator.comparing(Version::getId, String.CASE_INSENSITIVE_ORDER));
+        countLabel.setText(versions.size() + " versões");
         if (versions.isEmpty()) {
             TextView empty = text("Nenhuma instância instalada.\nUse '+ Adicionar instância' para instalar uma versão Vanilla, Fabric, Forge ou outra opção compatível.", 13, MUTED, false);
             empty.setPadding(dp(10), dp(20), dp(10), dp(20));
