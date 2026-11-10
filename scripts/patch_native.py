@@ -81,4 +81,30 @@ patch("launcher/java/JavaPerformance.h",
       "#include <QStringList>",
       "#include <QDebug>\n#include <QStringList>")
 
+# Android data and instance files must stay in the application's own writable
+# files directory, not in the parent directory or the desktop installation root.
+patch("launcher/Application.cpp",
+      """#if defined(Q_OS_LINUX) || defined(Q_OS_FREEBSD) || defined(Q_OS_OPENBSD)
+        QDir foo(FS::PathCombine(binPath, ".."));  // typically portable-root or /usr""",
+      """#if defined(Q_OS_ANDROID)
+        m_rootPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+#elif defined(Q_OS_LINUX) || defined(Q_OS_FREEBSD) || defined(Q_OS_OPENBSD)
+        QDir foo(FS::PathCombine(binPath, ".."));  // typically portable-root or /usr""")
+
+patch("launcher/Application.cpp",
+      """        if (DesktopServices::isSnap()) {
+            foo = QDir(qEnvironmentVariable("SNAP_USER_COMMON"));
+        } else {
+            foo = QDir(FS::PathCombine(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation), ".."));
+        }""",
+      """#if defined(Q_OS_ANDROID)
+        foo = QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation));
+#else
+        if (DesktopServices::isSnap()) {
+            foo = QDir(qEnvironmentVariable("SNAP_USER_COMMON"));
+        } else {
+            foo = QDir(FS::PathCombine(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation), ".."));
+        }
+#endif""")
+
 print("Android CMake adjustments applied to actual PineconeMC source.")
