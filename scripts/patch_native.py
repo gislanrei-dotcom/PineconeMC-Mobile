@@ -209,4 +209,35 @@ if(ANDROID)
     endif()
 endif""")
 
+# Send the installed OpenJDK module home and APK native-library directory to
+# the independent JNI subprocess while keeping PineconeMC's own launch script.
+patch("launcher/minecraft/launch/LauncherPartLaunch.cpp",
+      '#include "minecraft/MinecraftInstance.h"',
+      """#include "minecraft/MinecraftInstance.h"
+#ifdef Q_OS_ANDROID
+#include "AndroidRuntime.h"
+#include <QFileInfo>
+#include <QProcessEnvironment>
+#endif""")
+
+patch("launcher/minecraft/launch/LauncherPartLaunch.cpp",
+      "    m_process.setProcessEnvironment(instance->createLaunchEnvironment());",
+      """#ifdef Q_OS_ANDROID
+    QProcessEnvironment environment = instance->createLaunchEnvironment();
+    const auto androidRuntime = AndroidRuntime::inspect();
+    if (!androidRuntime.available()) {
+        emit logLine(androidRuntime.error, MessageLevel::Fatal);
+        emitFailed(androidRuntime.error);
+        return;
+    }
+    const QString javaHome =
+        QFileInfo(QFileInfo(androidRuntime.runtimeModules).absolutePath()).absolutePath();
+    environment.insert("PINECONE_JAVA_HOME", javaHome);
+    environment.insert("PINECONE_JVM_LIBRARY", androidRuntime.jvmLibrary);
+    environment.insert("PINECONE_NATIVE_LIB_DIR", androidRuntime.nativeLibraryDirectory);
+    m_process.setProcessEnvironment(environment);
+#else
+    m_process.setProcessEnvironment(instance->createLaunchEnvironment());
+#endif""")
+
 print("Android CMake adjustments applied to actual PineconeMC source.")
