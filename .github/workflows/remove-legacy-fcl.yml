@@ -1,0 +1,27 @@
+name: Remove FoldCraftLauncher legacy APK releases
+
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/remove-legacy-fcl.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  delete-legacy-apks:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Delete only the two obsolete FCL-based prereleases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for TAG in pinecone-mobile-debug-2 pinecone-mobile-debug-3; do
+            if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              gh release delete "$TAG" --yes --cleanup-tag --repo "$GITHUB_REPOSITORY"
+              echo "Deleted obsolete FCL prerelease: $TAG"
+            fi
+          done
