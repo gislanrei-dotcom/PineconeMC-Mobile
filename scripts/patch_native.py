@@ -72,4 +72,10 @@ patch("CMakeLists.txt",
       "elseif(UNIX)\n",
       "elseif(UNIX AND NOT ANDROID)\n")
 
+# Qt 6 on Android does not transitively expose QDebug through QStringList.
+# The original inline warning in this header requires QDebug's full definition.
+patch("launcher/java/JavaPerformance.h",
+      "#include <QStringList>",
+      "#include <QDebug>\n#include <QStringList>")
+
 print("Android CMake adjustments applied to actual PineconeMC source.")
