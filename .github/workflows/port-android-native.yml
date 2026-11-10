@@ -82,6 +82,18 @@ jobs:
           set -euxo pipefail
           cmake --build build-android --parallel 3
 
+      - name: Bundle original PineconeMC Java helper JARs in Android assets
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p android/assets/jars
+          for JAR in NewLaunch.jar NewLaunchLegacy.jar JavaCheck.jar; do
+            SOURCE="$(find build-android -type f -name "$JAR" -print -quit)"
+            test -n "$SOURCE"
+            test -s "$SOURCE"
+            cp "$SOURCE" "android/assets/jars/$JAR"
+          done
+
       # Qt 6.8's 'apk' target uses androiddeployqt and Gradle to bundle the
       # compiled original C++ application. It is NOT a functioning Java runtime.
       - name: Create diagnostic Android APK with Qt androiddeployqt
