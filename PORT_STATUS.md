@@ -26,3 +26,11 @@ Um APK produzido apenas por Qt não representa um launcher jogável. Não public
 `PineconeMC-Linux-x86_64.AppImage` é um artefato compilado de Linux x64, inadequado ao Android ARM64; serve como referência visual e de versão, não como executável ou biblioteca Android.
 
 PineconeMC oficialmente deriva de Prism Launcher; o port Android desta branch, porém, não usa o motor de um **outro launcher Android**.
+
+## Compilações verificadas em 10/11/2026
+
+- A primeira compilação nativa, execução `42803667404`, chegou ao CMake e revelou um erro de localização do pacote host ECM. Corrigido com `ECM_DIR`.
+- A segunda, execução `42807464302`, passou pelo ECM e encontrou `Qt6NetworkAuth` ausente no pacote Android. O workflow agora instala o addon oficial `qtnetworkauth` via aqtinstall. Verificação de compilação subsequente pendente.
+- Os pré-lançamentos antigos `pinecone-mobile-debug-2` e `pinecone-mobile-debug-3` foram excluídos em `42807417913`; a `main` atual não contém o código-fonte do antigo launcher Android.
+
+Esta etapa verifica apenas a compilação do próprio PineconeMC em Android. A ponte nativa para JVM, gráficos e touchscreen ainda precisa ser implementada e validada. Não divulgar um APK apenas de interface como se estivesse jogável.
