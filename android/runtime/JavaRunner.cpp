@@ -90,6 +90,25 @@ int main(int argc, char** argv)
     for (; next < argc; ++next)
         appArgs.emplace_back(argv[next]);
 
+    // Point the future Android/Bionic JVM at the Java SE module image and
+    // preserve Minecraft's instance-native library path.
+    if (const char* javaHome = std::getenv("PINECONE_JAVA_HOME"); javaHome && *javaHome) {
+        vmStrings.emplace_back(std::string("-Djava.home=") + javaHome);
+    }
+    if (const char* nativeDirectory = std::getenv("PINECONE_NATIVE_LIB_DIR");
+        nativeDirectory && *nativeDirectory) {
+        const std::string prefix = "-Djava.library.path=";
+        bool merged = false;
+        for (auto& option : vmStrings) {
+            if (starts(option, prefix.c_str())) {
+                option = prefix + nativeDirectory + ":" + option.substr(prefix.size());
+                merged = true;
+            }
+        }
+        if (!merged)
+            vmStrings.emplace_back(prefix + nativeDirectory);
+    }
+
     const std::string jvmPath = javaLibraryPath(argv[0]);
     void* library = dlopen(jvmPath.c_str(), RTLD_NOW | RTLD_GLOBAL);
     if (!library) {

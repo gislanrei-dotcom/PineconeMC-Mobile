@@ -20,10 +20,12 @@ javac -d "$TEST_DIR" \
   "$UPSTREAM/libraries/javacheck/JavaCheck.java"
 (cd "$TEST_DIR" && jar cf JavaCheck.jar JavaCheck.class)
 RUNNER="$TEST_DIR/java_runner"
-output="$(PINECONE_JVM_LIBRARY="$JVM_LIB" "$RUNNER" \
-  -Dpinecone.test=it_works -cp "$TEST_DIR" TestMain alpha beta)"
+output="$(PINECONE_JVM_LIBRARY="$JVM_LIB" PINECONE_JAVA_HOME="$JAVA_HOME" PINECONE_NATIVE_LIB_DIR="$TEST_DIR/native" "$RUNNER" \
+  -Dpinecone.test=it_works -Djava.library.path=/minecraft/natives -cp "$TEST_DIR" TestMain alpha beta)"
 grep -qx 'PINECONE_RUNNER_OK:alpha|beta' <<< "$output"
 grep -qx 'PINECONE_OPTION:it_works' <<< "$output"
+grep -qx "PINECONE_JAVA_HOME:$JAVA_HOME" <<< "$output"
+grep -qx "PINECONE_NATIVE_PATH:$TEST_DIR/native:/minecraft/natives" <<< "$output"
 check="$(PINECONE_JVM_LIBRARY="$JVM_LIB" "$RUNNER" -jar "$TEST_DIR/JavaCheck.jar")"
 grep -q '^os.arch=' <<< "$check"
 grep -q '^java.version=' <<< "$check"
