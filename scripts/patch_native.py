@@ -29,7 +29,7 @@ patch("launcher/CMakeLists.txt",
       "    set_target_properties(${Launcher_Name} PROPERTIES\n"
       "        QT_ANDROID_PACKAGE_NAME \"ru.pineconemc.mobile\"\n"
       "        QT_ANDROID_VERSION_NAME \"0.1.0\"\n"
-      "        QT_ANDROID_MIN_SDK_VERSION 26\n"
+      "        QT_ANDROID_MIN_SDK_VERSION 28\n"
       "    )\n"
       "else()\n"
       "    add_executable(${Launcher_Name} MACOSX_BUNDLE WIN32 main.cpp ${LAUNCHER_RCS})\n"
