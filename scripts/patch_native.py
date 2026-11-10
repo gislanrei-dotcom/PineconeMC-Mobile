@@ -107,4 +107,53 @@ patch("launcher/Application.cpp",
         }
 #endif""")
 
+# The original PineconeMC uses helper JARs from its own Java sources
+# (NewLaunch/Legacy and JavaCheck). On Android APK assets aren't normal
+# filesystem paths, so install them atomically under the app's private data.
+patch("launcher/Application.cpp",
+      """#include <QFileInfo>""",
+      """#include <QFileInfo>
+#include <QFile>
+#include <QSaveFile>""")
+
+patch("launcher/Application.cpp",
+      """    m_dataPath = dataPath;
+
+    /*
+     * Establish the mechanism""",
+      """    m_dataPath = dataPath;
+
+#ifdef Q_OS_ANDROID
+    const QString jarDir = FS::PathCombine(m_rootPath, "jars");
+    if (!QDir().mkpath(jarDir)) {
+        showFatalErrorMessage("Could not create the Android launcher JAR directory.", jarDir);
+        return;
+    }
+    for (const QString& jarName : {QStringLiteral("NewLaunch.jar"),
+                                   QStringLiteral("NewLaunchLegacy.jar"),
+                                   QStringLiteral("JavaCheck.jar")}) {
+        QFile asset(QStringLiteral("assets:/jars/") + jarName);
+        if (!asset.open(QIODevice::ReadOnly)) {
+            qWarning() << "Missing bundled original PineconeMC helper JAR:" << jarName;
+            continue;
+        }
+        const QByteArray contents = asset.readAll();
+        const QString destination = FS::PathCombine(jarDir, jarName);
+        QFile existing(destination);
+        if (existing.open(QIODevice::ReadOnly) && existing.readAll() == contents) {
+            continue;
+        }
+        QSaveFile output(destination);
+        if (!output.open(QIODevice::WriteOnly) ||
+            output.write(contents) != contents.size() ||
+            !output.commit()) {
+            showFatalErrorMessage("Could not install bundled PineconeMC JAR.", destination);
+            return;
+        }
+    }
+#endif
+
+    /*
+     * Establish the mechanism""")
+
 print("Android CMake adjustments applied to actual PineconeMC source.")
