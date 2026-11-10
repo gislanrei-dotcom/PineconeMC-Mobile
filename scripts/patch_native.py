@@ -35,6 +35,12 @@ patch("launcher/CMakeLists.txt",
       "    add_executable(${Launcher_Name} MACOSX_BUNDLE WIN32 main.cpp ${LAUNCHER_RCS})\n"
       "endif()")
 
+# qt_add_executable uses keyword form internally for Android packaging;
+# all later calls on that target must use keyword form as well.
+patch("launcher/CMakeLists.txt",
+      "target_link_libraries(${Launcher_Name} Launcher_logic)",
+      "target_link_libraries(${Launcher_Name} PRIVATE Launcher_logic)")
+
 # Android is UNIX to CMake, but not the Linux desktop: avoid deployment of
 # .desktop files/man pages, and don't link QtDBus if not packaged for Android.
 patch("CMakeLists.txt",
