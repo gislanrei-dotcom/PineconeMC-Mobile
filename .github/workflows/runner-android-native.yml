@@ -19,7 +19,21 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          NDK="${ANDROID_HOME}/ndk/26.1.10909125"
+          # GitHub runner image NDK versions vary. Use an installed NDK
+          # rather than assuming that r26 is available on the host image.
+          NDK=""
+          for candidate in "${ANDROID_HOME}"/ndk/*; do
+            if test -x "$candidate/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android28-clang++"; then
+              NDK="$candidate"
+              break
+            fi
+          done
+          if test -z "$NDK"; then
+            SDKMANAGER="$(find "${ANDROID_HOME}/cmdline-tools" -name sdkmanager -type f | sort -V | tail -1)"
+            test -x "$SDKMANAGER"
+            "$SDKMANAGER" --sdk_root="${ANDROID_HOME}" --install "ndk;26.1.10909125"
+            NDK="${ANDROID_HOME}/ndk/26.1.10909125"
+          fi
           TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
           CXX="$TOOLCHAIN/bin/aarch64-linux-android28-clang++"
           test -x "$CXX"
