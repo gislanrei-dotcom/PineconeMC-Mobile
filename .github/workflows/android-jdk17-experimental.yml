@@ -1,0 +1,250 @@
+name: Experimental PineconeMC Android APK with OpenJDK17 candidate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/android-jdk17-experimental.yml'
+      - 'research/openjdk17_candidate.py'
+  workflow_dispatch:
+
+# Avoid launching multiple 20-minute native toolchain builds for adjacent commits.
+concurrency:
+  group: experimental-native-jdk17-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  port-qt-cpp:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout native port branch
+        uses: actions/checkout@v4
+      - name: Checkout original PineconeMC (no FCL)
+        uses: actions/checkout@v4
+        with:
+          repository: ElyPrismLauncher/Launcher
+          ref: 9d6572797078947314b1f1737590bc157a259958
+          path: PineconeMC
+          submodules: recursive
+      - name: Validate Python and patch original PineconeMC before expensive toolchain setup
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 -m py_compile scripts/patch_native.py scripts/validate_apk.py
+          python3 scripts/patch_native.py PineconeMC
+
+      - name: Test original JavaCheck and JNI JavaRunner on Linux host
+        shell: bash
+        run: |
+          set -euxo pipefail
+          bash scripts/test_java_runner.sh
+
+      - name: Install Android cross-compiler
+        shell: bash
+        run: |
+          set -euxo pipefail
+          # Ubuntu GitHub runners sometimes list Azure mirrors that can fail
+          # DNS resolution. Prefer the canonical mirror instead, and retry
+          # transient network errors without masking a real package failure.
+          if test -f /etc/apt/sources.list.d/ubuntu.sources; then
+            sudo sed -i \
+              -e 's|mirror+file:/etc/apt/apt-mirrors.txt|http://archive.ubuntu.com/ubuntu|g' \
+              -e 's|https\?://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' \
+              /etc/apt/sources.list.d/ubuntu.sources
+          fi
+          sudo apt-get -o Acquire::Retries=4 update
+          sudo apt-get -o Acquire::Retries=4 install -y patchelf ninja-build cmake git python3-pip python3-venv extra-cmake-modules pkg-config autoconf automake libtool
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -name sdkmanager -type f | sort -V | tail -1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --sdk_root="$SDK_ROOT" --licenses > /dev/null || true
+          "$SDKMANAGER" --sdk_root="$SDK_ROOT" --install "platforms;android-35" "build-tools;35.0.0" "ndk;26.1.10909125" "cmake;3.22.1"
+      - name: Install matching Qt 6 Android and host developer tools
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 -m venv "$RUNNER_TEMP/aqt-env"
+          "$RUNNER_TEMP/aqt-env/bin/pip" install --upgrade pip
+          "$RUNNER_TEMP/aqt-env/bin/pip" install aqtinstall==3.2.1
+          "$RUNNER_TEMP/aqt-env/bin/aqt" install-qt linux desktop 6.8.3 linux_gcc_64 --outputdir "$RUNNER_TEMP/qt"
+          "$RUNNER_TEMP/aqt-env/bin/aqt" install-qt linux android 6.8.3 android_arm64_v8a --modules qtnetworkauth --outputdir "$RUNNER_TEMP/qt"
+          test -f "$RUNNER_TEMP/qt/6.8.3/android_arm64_v8a/lib/cmake/Qt6/qt.toolchain.cmake"
+      - name: Build original native dependencies for Android
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --filter=blob:none --depth=1 https://github.com/microsoft/vcpkg.git "$RUNNER_TEMP/vcpkg"
+          "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+          export ANDROID_NDK_HOME="${ANDROID_HOME}/ndk/26.1.10909125"
+          export VCPKG_ROOT="$RUNNER_TEMP/vcpkg"
+          "$VCPKG_ROOT/vcpkg" install --triplet arm64-android cmark libarchive libqrencode tomlplusplus zlib
+      # AndroidManifest.xml references this drawable, so its source file must
+      # exist BEFORE CMake/androiddeployqt prepares the Android overlay.
+      - name: Bundle original PineconeMC icon
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p android/res/drawable
+          cp PineconeMC/program_info/io.github.elyprismlauncher.ElyPrismLauncher_256.png android/res/drawable/pineconemc_icon.png
+          file android/res/drawable/pineconemc_icon.png
+
+      # Builds a PROTOTYPE from GPL OpenJDK/Termux source packages, does
+      # not execute package maintainer scripts, and verifies APT SHA256.
+      # Do not call the result a supported Java runtime until device tests.
+      - name: Prepare experimental OpenJDK17 in APK overlay
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 research/openjdk17_candidate.py
+          mkdir -p android/assets android/libs/arm64-v8a
+          cp -a candidate/android/assets/. android/assets/
+          cp -a candidate/android/libs/. android/libs/
+          test -s android/libs/arm64-v8a/libjvm.so
+          test -s android/assets/runtime/java-17/lib/modules
+          test -s android/assets/runtime/java-17/manifest.tsv
+          du -sh android/assets/runtime/java-17 android/libs/arm64-v8a
+
+      - name: Configure original PineconeMC Qt Android build
+        shell: bash
+        run: |
+          set -euxo pipefail
+          export ANDROID_NDK_HOME="${ANDROID_HOME}/ndk/26.1.10909125"
+          export VCPKG_ROOT="$RUNNER_TEMP/vcpkg"
+          cmake -S PineconeMC -B build-android -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$RUNNER_TEMP/qt/6.8.3/android_arm64_v8a/lib/cmake/Qt6/qt.toolchain.cmake" \
+            -DVCPKG_TARGET_TRIPLET=arm64-android \
+            -DVCPKG_INSTALLED_DIR="$VCPKG_ROOT/installed" \
+            -DECM_DIR=/usr/share/ECM/cmake \
+            -DQT_HOST_PATH="$RUNNER_TEMP/qt/6.8.3/gcc_64" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-28 \
+            -DCMAKE_SYSTEM_VERSION=28 \
+            -DPINECONE_EXPERIMENTAL_JAVA_RUNNER=ON \
+            -DLauncher_BUILD_PLATFORM=android-arm64 \
+            -DLauncher_USE_PCH=OFF \
+            -DLauncher_ENABLE_JAVA_DOWNLOADER=OFF \
+            -DLauncher_CURSEFORGE_API_KEY="" \
+            -DBUILD_TESTING=OFF
+      # The Qt Android target builds the APK as part of the default Ninja
+      # build. Stage original Java helper JARs BEFORE launching that target.
+      - name: Compile the upstream PineconeMC Java helper archives
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --build build-android --target NewLaunch NewLaunchLegacy JavaCheck --parallel 3
+
+      - name: Bundle original PineconeMC Java helper JARs in Android assets
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p android/assets/jars
+          for JAR in NewLaunch.jar NewLaunchLegacy.jar JavaCheck.jar; do
+            SOURCE="$(find build-android -type f -name "$JAR" -print -quit)"
+            test -n "$SOURCE"
+            test -s "$SOURCE"
+            cp "$SOURCE" "android/assets/jars/$JAR"
+          done
+
+      - name: Compile original PineconeMC Android native target
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --build build-android --parallel 3
+          # Native subprocess is a real Android PIE executable, not a Qt
+          # autoloaded shared library. Confirm it was emitted before APK check.
+          RUNNER=android/libs/arm64-v8a/libpinecone_java.so
+          test -s "$RUNNER"
+          file "$RUNNER"
+          "${ANDROID_HOME}/ndk/26.1.10909125/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -h "$RUNNER" | grep -F 'AArch64'
+
+      # qt_add_executable() creates the Android APK during the default build.
+      # Do not invoke an undefined global 'apk' target a second time.
+      - name: Verify Android ARM64 APK structure and package identity
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p out
+          mapfile -t APKS < <(find build-android -type f -name '*.apk' | sort)
+          printf 'APK candidates:\\n%s\\n' "${APKS[*]}"
+          test "${#APKS[@]}" -ge 1
+          RAW_APK="${APKS[0]}"
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          TOOLS="$SDK_ROOT/build-tools/35.0.0"
+          test -x "$TOOLS/zipalign"
+          test -x "$TOOLS/apksigner"
+          test -x "$TOOLS/aapt"
+          zipalign -c 4 "$RAW_APK" || "$TOOLS/zipalign" -f 4 "$RAW_APK" "$RUNNER_TEMP/aligned.apk"
+          if test -s "$RUNNER_TEMP/aligned.apk"; then
+            ALIGNED_APK="$RUNNER_TEMP/aligned.apk"
+          else
+            ALIGNED_APK="$RAW_APK"
+          fi
+          # A disposable signing identity allows sideloading a diagnostic APK,
+          # but must NEVER be treated as a production signing key.
+          keytool -genkeypair -noprompt -keystore "$RUNNER_TEMP/pinecone-diagnostic.p12" \
+            -storetype PKCS12 -storepass changeit -keypass changeit \
+            -alias pinecone-ui-only -keyalg RSA -keysize 2048 -validity 90 \
+            -dname "CN=PineconeMC Diagnostic,O=Development,C=BR"
+          APK="$PWD/out/PineconeMC-Mobile-Android-Java17-Experimental.apk"
+          "$TOOLS/apksigner" sign --ks "$RUNNER_TEMP/pinecone-diagnostic.p12" \
+            --ks-pass pass:changeit --key-pass pass:changeit \
+            --out "$APK" "$ALIGNED_APK"
+          "$TOOLS/apksigner" verify --verbose --min-sdk-version 28 "$APK"
+          python3 scripts/validate_apk.py "$APK"
+          # Verify every Java asset and native symlink target survived
+          # androiddeployqt/Gradle assembly, not just the source overlay.
+          python3 - "$APK" <<'PY'
+          import hashlib, sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as apk:
+              base = "assets/runtime/java-17/"
+              rows = apk.read(base + "manifest.tsv").decode("utf-8").splitlines()
+              checked = 0
+              for row in rows:
+                  if not row or row.startswith("#"):
+                      continue
+                  kind, relative, *fields = row.split("\t")
+                  if kind == "L":
+                      assert len(fields) == 1 and "lib/arm64-v8a/" + fields[0] in apk.namelist(), row
+                  elif kind == "F":
+                      assert len(fields) == 2, row
+                      name = base + relative
+                      digest = hashlib.sha256()
+                      length = 0
+                      with apk.open(name) as handle:
+                          while True:
+                              block = handle.read(128 * 1024)
+                              if not block:
+                                  break
+                              digest.update(block)
+                              length += len(block)
+                      assert length == int(fields[0]) and digest.hexdigest() == fields[1], name
+                  else:
+                      raise AssertionError("Malformed runtime record " + row)
+                  checked += 1
+              assert checked >= 250, checked
+              print("Verified", checked, "OpenJDK runtime assets and library links in APK.")
+          PY
+          AAPT="$TOOLS/aapt"
+          "$AAPT" dump badging "$APK" > out/android-package-info.txt
+          grep -F "package: name='ru.pineconemc.mobile'" out/android-package-info.txt
+          grep -F "sdkVersion:'28'" out/android-package-info.txt
+          grep -F "targetSdkVersion:'35'" out/android-package-info.txt
+          sha256sum "$APK" > out/PineconeMC-Mobile-Android-Java17-Experimental.apk.sha256
+          printf '%s\\n' 'PineconeMC native Android/Qt APK; UI smoke test only.' 'Minecraft Java runtime, graphics bridge, touch input and Ely.by sign-in remain unverified.' > out/NOT-YET-PLAYABLE.txt
+
+      - name: Upload UNTESTED Qt UI APK for Android integration checks
+        uses: actions/upload-artifact@v4
+        with:
+          name: PineconeMC-EXPERIMENTAL-OPENJDK17-NOT-PLAYABLE
+          path: out/
+          if-no-files-found: error
+          retention-days: 14
+
+      # No GitHub Release: the original PineconeMC runtime still needs Android
+      # Java Edition JVM / LWJGL graphics / touch and device testing.
