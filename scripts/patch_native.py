@@ -166,7 +166,7 @@ if(ANDROID)
         "${CMAKE_SOURCE_DIR}/../android/native/AndroidRuntime.cpp")
     target_include_directories(Launcher_logic PRIVATE
         "${CMAKE_SOURCE_DIR}/../android/native")
-endif""")
+endif()""")
 
 patch("launcher/launch/steps/CheckJava.cpp",
       '#include "java/JavaUtils.h"',
@@ -207,7 +207,7 @@ if(ANDROID)
         set_property(TARGET ${Launcher_Name} APPEND PROPERTY
             QT_ANDROID_EXTRA_LIBS "$<TARGET_FILE:pinecone_java_runner>")
     endif()
-endif""")
+endif()""")
 
 # Send the installed OpenJDK module home and APK native-library directory to
 # the independent JNI subprocess while keeping PineconeMC's own launch script.
