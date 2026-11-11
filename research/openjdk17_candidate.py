@@ -20,7 +20,7 @@ PIN = "48a5eddbe94e354282132578da17c1394caa04d83a4592074c1793b436ff9c15"
 PACKAGES = [
     "openjdk-17", "libandroid-shmem", "libandroid-spawn", "libiconv",
     "libjpeg-turbo", "zlib", "littlecms", "alsa-lib", "alsa-plugins",
-    "ca-certificates-java",
+    "ca-certificates-java", "libandroid-sysv-semaphore", "libc++",
 ]
 
 def digest(file):
@@ -145,6 +145,21 @@ def main():
             + "".join("\t".join(row) + "\n" for row in sorted(manifest)),
             encoding="utf-8"
         )
+        # Android package extraction recognizes only lib*.so names. The
+        # Termux linker can ask for versioned SONAMEs; point those references
+        # at the unversioned but ABI-equivalent libraries we packaged.
+        # Never rewrite the libc / Android platform dependencies.
+        compatible_sonames = {"libjpeg.so.8": "libjpeg.so", "libz.so.1": "libz.so"}
+        for lib in libs.glob("*.so"):
+            existing = subprocess.run(["patchelf", "--print-needed", str(lib)],
+                                      capture_output=True, text=True, check=True).stdout.splitlines()
+            for original, replacement in compatible_sonames.items():
+                if original in existing:
+                    if replacement not in stored:
+                        raise RuntimeError("Missing compatible library " + replacement)
+                    subprocess.run(["patchelf", "--replace-needed", original,
+                                    replacement, str(lib)], check=True)
+
         needed = set()
         for lib in libs.glob("*.so"):
             result = subprocess.run(["patchelf", "--print-needed", str(lib)],
