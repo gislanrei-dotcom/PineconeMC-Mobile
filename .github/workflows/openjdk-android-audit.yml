@@ -1,0 +1,93 @@
+name: Audit Android ARM64 OpenJDK 17 candidate
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/openjdk-android-audit.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect-termux-jdk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Inspect verified ARM64 Bionic JRE archive without executing package scripts
+        shell: bash
+        run: |
+          set -euxo pipefail
+          BASE="https://packages.termux.dev/apt/termux-main"
+          mkdir -p out pkg
+          curl --fail --location --retry 4 --retry-all-errors --output Packages.gz \
+            "$BASE/dists/stable/main/binary-aarch64/Packages.gz"
+          python3 - <<'PY' > package-info.txt
+          import gzip
+          from pathlib import Path
+          records = gzip.decompress(Path("Packages.gz").read_bytes()).decode("utf-8").split("\n\n")
+          for record in records:
+              lines = record.splitlines()
+              if not any(line == "Package: openjdk-17" for line in lines):
+                  continue
+              fields = dict(line.split(": ", 1) for line in lines if ": " in line and not line.startswith(" "))
+              assert fields["Architecture"] == "aarch64", fields
+              path = fields["Filename"]
+              assert path.startswith("pool/main/") and ".." not in path, path
+              assert len(fields["SHA256"]) == 64, fields
+              assert 1_000_000 < int(fields["Size"]) < 400_000_000, fields
+              print(path)
+              print(fields["SHA256"])
+              print(fields["Version"])
+              print(fields.get("Depends", ""))
+              break
+          else:
+              raise SystemExit("No official openjdk-17 aarch64 package found")
+          PY
+          FILE="$(sed -n '1p' package-info.txt)"
+          SHA="$(sed -n '2p' package-info.txt)"
+          VERSION="$(sed -n '3p' package-info.txt)"
+          DEPENDS="$(sed -n '4p' package-info.txt)"
+          curl --fail --location --retry 4 --retry-all-errors \
+            --output openjdk-17-aarch64.deb "$BASE/$FILE"
+          echo "$SHA  openjdk-17-aarch64.deb" | sha256sum -c -
+          # dpkg-deb -x only extracts package data, never runs maintainer scripts.
+          dpkg-deb --extract openjdk-17-aarch64.deb pkg
+          JAVA_HOME="$(find "$PWD/pkg" -path '*/java-17-openjdk/lib/modules' -type f -print -quit)"
+          test -s "$JAVA_HOME"
+          JAVA_HOME="$(dirname "$(dirname "$JAVA_HOME")")"
+          JVM="$JAVA_HOME/lib/server/libjvm.so"
+          test -s "$JVM"
+          file "$JVM"
+          file "$JAVA_HOME/lib/modules"
+          {
+            echo "Termux OpenJDK 17 Android ARM64 audit (candidate only)"
+            echo "Version: $VERSION"
+            echo "Package SHA256: $SHA"
+            echo "Package dependencies: $DEPENDS"
+            echo "Java home in distribution: $JAVA_HOME"
+            du -sh "$JAVA_HOME"
+            echo
+            echo "ELF header:"
+            readelf -h "$JVM" | grep -E 'Class:|Machine:|Type:'
+            echo
+            echo "Native dynamic dependencies / runpaths:"
+            readelf -d "$JVM" | grep -E 'NEEDED|RPATH|RUNPATH' || true
+            echo
+            echo "Embedded references to Termux absolute prefix (non-relocatability risk):"
+            strings "$JVM" | grep -m 8 -F '/data/data/com.termux/' || true
+            echo
+            echo "Runtime library count:"
+            find "$JAVA_HOME" -name '*.so' | wc -l
+            echo
+            echo "License notices:"
+            find "$JAVA_HOME/legal" -maxdepth 2 -type f -name 'LICENSE' | head -15 || true
+            echo
+            echo "This audit does not imply a redistributable or working Java runtime."
+            echo "The package is NOT added to the APK; no ART/OpenJDK or Minecraft launch test."
+          } | tee out/openjdk17-bionic-audit.txt
+      - name: Publish metadata report only (no third-party JDK binaries)
+        uses: actions/upload-artifact@v4
+        with:
+          name: PineconeMC-OpenJDK17-Bionic-Runtime-Audit
+          path: out/openjdk17-bionic-audit.txt
+          if-no-files-found: error
+          retention-days: 7
