@@ -6,8 +6,118 @@
 #include <QFileInfo>
 #include <QJniObject>
 #include <QStandardPaths>
+#include <QCryptographicHash>
+#include <QFile>
+#include <QSaveFile>
+#include <QStringList>
 
 namespace AndroidRuntime {
+namespace {
+
+// The runtime manifest contains only app-owned relative paths, never URLs or
+// absolute paths. It is generated alongside the corresponding APK assets.
+bool safeRelativePath(const QString& path)
+{
+    if (path.isEmpty() || path.startsWith('/') || path.contains('\\'))
+        return false;
+    if (QDir::cleanPath(path) != path)
+        return false;
+    for (const QString& component : path.split('/')) {
+        if (component.isEmpty() || component == "." || component == "..")
+            return false;
+    }
+    return true;
+}
+
+QByteArray hashFile(const QString& path)
+{
+    QFile input(path);
+    if (!input.open(QIODevice::ReadOnly))
+        return {};
+    QCryptographicHash sha(QCryptographicHash::Sha256);
+    if (!sha.addData(&input))
+        return {};
+    return sha.result().toHex();
+}
+
+// Copies non-executable Java SE data to private storage, and links any Java
+// .so files to nativeLibraryDir. Android's app-data executable restriction
+// means native machine code is NEVER unpacked as ordinary writable assets.
+QString installRuntimeAssets(const QString& nativeDir, const QString& javaHome)
+{
+    QFile manifest(QStringLiteral("assets:/runtime/java-17/manifest.tsv"));
+    if (!manifest.exists())
+        return {}; // Existing diagnostic APK intentionally has no JRE.
+    if (!manifest.open(QIODevice::ReadOnly))
+        return QStringLiteral("Não foi possível abrir o manifesto do Java 17.");
+
+    while (!manifest.atEnd()) {
+        const QString line = QString::fromUtf8(manifest.readLine()).trimmed();
+        if (line.isEmpty() || line.startsWith('#'))
+            continue;
+        const QStringList parts = line.split('\t');
+        if (parts.size() < 3 || !safeRelativePath(parts.at(1)))
+            return QStringLiteral("Manifesto Java 17 inválido: caminho relativo incorreto.");
+        const QString destination = QDir(javaHome).filePath(parts.at(1));
+        if (!QDir().mkpath(QFileInfo(destination).absolutePath()))
+            return QStringLiteral("Não foi possível preparar a pasta do Java 17.");
+
+        if (parts.at(0) == "F" && parts.size() == 4) {
+            bool validSize = false;
+            const qint64 expectedSize = parts.at(2).toLongLong(&validSize);
+            const QByteArray expectedHash = parts.at(3).toLatin1();
+            if (!validSize || expectedSize < 0 || expectedHash.size() != 64)
+                return QStringLiteral("Manifesto Java 17 contém tamanho ou SHA256 inválido.");
+            QFileInfo existing(destination);
+            if (existing.isFile() && existing.size() == expectedSize
+                && hashFile(destination) == expectedHash) {
+                continue;
+            }
+
+            QFile asset(QStringLiteral("assets:/runtime/java-17/") + parts.at(1));
+            if (!asset.open(QIODevice::ReadOnly))
+                return QStringLiteral("Arquivo Java 17 ausente do APK: ") + parts.at(1);
+            QSaveFile output(destination);
+            if (!output.open(QIODevice::WriteOnly))
+                return QStringLiteral("Não foi possível criar arquivo Java 17: ") + parts.at(1);
+            QCryptographicHash sha(QCryptographicHash::Sha256);
+            qint64 written = 0;
+            while (!asset.atEnd()) {
+                const QByteArray block = asset.read(128 * 1024);
+                if (block.isEmpty() && asset.error() != QFileDevice::NoError)
+                    return QStringLiteral("Falha ao ler arquivo Java 17: ") + parts.at(1);
+                if (output.write(block) != block.size())
+                    return QStringLiteral("Sem espaço ou falha ao gravar Java 17: ") + parts.at(1);
+                sha.addData(block);
+                written += block.size();
+            }
+            if (written != expectedSize || sha.result().toHex() != expectedHash)
+                return QStringLiteral("Falha de integridade SHA256 do Java 17: ") + parts.at(1);
+            if (!output.commit())
+                return QStringLiteral("Falha ao salvar arquivo Java 17: ") + parts.at(1);
+        } else if (parts.at(0) == "L" && parts.size() == 3) {
+            const QString library = parts.at(2);
+            if (!library.startsWith("lib") || !library.endsWith(".so")
+                || library.contains('/') || library.contains('\\')) {
+                return QStringLiteral("Manifesto Java 17 contém nome de biblioteca inválido.");
+            }
+            const QString nativePath = QDir(nativeDir).filePath(library);
+            if (!QFileInfo(nativePath).isFile())
+                return QStringLiteral("Biblioteca Java 17 não incluída no APK: ") + library;
+            if (QFileInfo(destination).canonicalFilePath() == QFileInfo(nativePath).canonicalFilePath())
+                continue;
+            QFile::remove(destination);
+            if (!QFile::link(nativePath, destination))
+                return QStringLiteral("Não foi possível vincular biblioteca Java 17: ") + library;
+        } else {
+            return QStringLiteral("Manifesto Java 17 contém registro inválido.");
+        }
+    }
+    return {};
+}
+
+} // namespace
+
 Status inspect()
 {
     Status result;
@@ -36,9 +146,15 @@ Status inspect()
     const QDir libs(result.nativeLibraryDirectory);
     result.javaExecutable = libs.filePath(QStringLiteral("libpinecone_java.so"));
     result.jvmLibrary = libs.filePath(QStringLiteral("libjvm.so"));
-    result.runtimeModules = QDir(
+    const QString javaHome = QDir(
         QStandardPaths::writableLocation(QStandardPaths::AppDataLocation))
-        .filePath(QStringLiteral("runtime/java-17/lib/modules"));
+        .filePath(QStringLiteral("runtime/java-17"));
+    result.runtimeModules = QDir(javaHome).filePath(QStringLiteral("lib/modules"));
+    const QString installError = installRuntimeAssets(result.nativeLibraryDirectory, javaHome);
+    if (!installError.isEmpty()) {
+        result.error = installError;
+        return result;
+    }
 
     if (!QFileInfo(result.javaExecutable).isExecutable()) {
         result.error = QStringLiteral(
