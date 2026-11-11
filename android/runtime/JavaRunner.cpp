@@ -169,7 +169,10 @@ int main(int argc, char** argv)
         vmOptions.push_back({const_cast<char*>(option.c_str()), nullptr});
 
     JavaVMInitArgs args{};
-    args.version = JNI_VERSION_1_8;
+    // Android NDK's jni.h does not declare JNI_VERSION_1_8. This process
+    // creates its own Java SE JVM through the Invocation API, not Android ART.
+    // The JNI 1.8 numeric version is 0x00010008 on both host and Android.
+    args.version = static_cast<jint>(0x00010008);
     args.nOptions = static_cast<jint>(vmOptions.size());
     args.options = vmOptions.data();
     args.ignoreUnrecognized = JNI_FALSE;
