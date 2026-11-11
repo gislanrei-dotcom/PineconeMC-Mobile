@@ -83,6 +83,16 @@ jobs:
           export ANDROID_NDK_HOME="${ANDROID_HOME}/ndk/26.1.10909125"
           export VCPKG_ROOT="$RUNNER_TEMP/vcpkg"
           "$VCPKG_ROOT/vcpkg" install --triplet arm64-android cmark libarchive libqrencode tomlplusplus zlib
+      # AndroidManifest.xml references this drawable, so its source file must
+      # exist BEFORE CMake/androiddeployqt prepares the Android overlay.
+      - name: Bundle original PineconeMC icon
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p android/res/drawable
+          cp PineconeMC/program_info/io.github.elyprismlauncher.ElyPrismLauncher_256.png android/res/drawable/pineconemc_icon.png
+          file android/res/drawable/pineconemc_icon.png
+
       - name: Configure original PineconeMC Qt Android build
         shell: bash
         run: |
@@ -106,19 +116,13 @@ jobs:
             -DLauncher_ENABLE_JAVA_DOWNLOADER=OFF \
             -DLauncher_CURSEFORGE_API_KEY="" \
             -DBUILD_TESTING=OFF
-      - name: Compile original PineconeMC Android native target
+      # The Qt Android target builds the APK as part of the default Ninja
+      # build. Stage original Java helper JARs BEFORE launching that target.
+      - name: Compile the upstream PineconeMC Java helper archives
         shell: bash
         run: |
           set -euxo pipefail
-          cmake --build build-android --parallel 3
-
-      - name: Bundle original PineconeMC icon
-        shell: bash
-        run: |
-          set -euxo pipefail
-          mkdir -p android/res/drawable
-          cp PineconeMC/program_info/io.github.elyprismlauncher.ElyPrismLauncher_256.png android/res/drawable/pineconemc_icon.png
-          file android/res/drawable/pineconemc_icon.png
+          cmake --build build-android --target NewLaunch NewLaunchLegacy JavaCheck --parallel 3
 
       - name: Bundle original PineconeMC Java helper JARs in Android assets
         shell: bash
@@ -132,14 +136,14 @@ jobs:
             cp "$SOURCE" "android/assets/jars/$JAR"
           done
 
-      # Qt 6.8's 'apk' target uses androiddeployqt and Gradle to bundle the
-      # compiled original C++ application. It is NOT a functioning Java runtime.
-      - name: Create diagnostic Android APK with Qt androiddeployqt
+      - name: Compile original PineconeMC Android native target
         shell: bash
         run: |
           set -euxo pipefail
-          cmake --build build-android --target apk --parallel 2
+          cmake --build build-android --parallel 3
 
+      # qt_add_executable() creates the Android APK during the default build.
+      # Do not invoke an undefined global 'apk' target a second time.
       - name: Verify Android ARM64 APK structure and package identity
         shell: bash
         run: |
