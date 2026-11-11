@@ -76,6 +76,62 @@ std::u16string fromUtf8(const std::string& bytes)
     return out;
 }
 
+// Resolve the Main-Class attribute using Java's own JAR manifest reader.
+// This supports -jar beyond the old JavaCheck-only special case without
+// adding a native ZIP parser or changing the original launch protocol.
+std::string manifestMainClass(JNIEnv* env, const std::string& jarPath)
+{
+    const auto pathUtf16 = fromUtf8(jarPath);
+    jstring path = env->NewString(reinterpret_cast<const jchar*>(pathUtf16.data()),
+                                  static_cast<jsize>(pathUtf16.size()));
+    if (!path || env->ExceptionCheck())
+        return {};
+    jclass jarType = env->FindClass("java/util/jar/JarFile");
+    if (!jarType || env->ExceptionCheck())
+        return {};
+    jmethodID ctor = env->GetMethodID(jarType, "<init>", "(Ljava/lang/String;)V");
+    if (!ctor || env->ExceptionCheck())
+        return {};
+    jobject jar = env->NewObject(jarType, ctor, path);
+    if (!jar || env->ExceptionCheck())
+        return {};
+    jmethodID manifestMethod = env->GetMethodID(
+        jarType, "getManifest", "()Ljava/util/jar/Manifest;");
+    if (!manifestMethod || env->ExceptionCheck())
+        return {};
+    jobject manifest = env->CallObjectMethod(jar, manifestMethod);
+    if (!manifest || env->ExceptionCheck())
+        return {};
+    jclass manifestType = env->FindClass("java/util/jar/Manifest");
+    jmethodID attributesMethod = env->GetMethodID(
+        manifestType, "getMainAttributes", "()Ljava/util/jar/Attributes;");
+    if (!attributesMethod || env->ExceptionCheck())
+        return {};
+    jobject attributes = env->CallObjectMethod(manifest, attributesMethod);
+    if (!attributes || env->ExceptionCheck())
+        return {};
+    jclass attributesType = env->FindClass("java/util/jar/Attributes");
+    jmethodID valueMethod = env->GetMethodID(
+        attributesType, "getValue", "(Ljava/lang/String;)Ljava/lang/String;");
+    if (!valueMethod || env->ExceptionCheck())
+        return {};
+    jstring mainKey = env->NewStringUTF("Main-Class");
+    jstring mainValue = static_cast<jstring>(
+        env->CallObjectMethod(attributes, valueMethod, mainKey));
+    std::string mainClass;
+    if (mainValue && !env->ExceptionCheck()) {
+        const char* utf8 = env->GetStringUTFChars(mainValue, nullptr);
+        if (utf8) {
+            mainClass = utf8;
+            env->ReleaseStringUTFChars(mainValue, utf8);
+        }
+    }
+    jmethodID closeMethod = env->GetMethodID(jarType, "close", "()V");
+    if (!env->ExceptionCheck() && closeMethod)
+        env->CallVoidMethod(jar, closeMethod);
+    return mainClass;
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -86,6 +142,7 @@ int main(int argc, char** argv)
     std::vector<std::string> vmStrings;
     std::vector<std::string> appArgs;
     std::string mainClass;
+    std::string runnableJar;
     int next = 1;
 
     for (; next < argc; ++next) {
@@ -97,13 +154,8 @@ int main(int argc, char** argv)
         } else if (arg == "-jar") {
             if (next + 1 >= argc)
                 return usageError("-jar precisa do caminho de um arquivo");
-            const std::string jar(argv[++next]);
-            // PineconeMC's own Java version checker has a known main class.
-            // Other -jar invocations need a JAR manifest reader before support.
-            if (jar.size() < 13 || jar.substr(jar.size() - 13) != "JavaCheck.jar")
-                return usageError("-jar não suportado nesta etapa, exceto JavaCheck.jar");
-            vmStrings.push_back("-Djava.class.path=" + jar);
-            mainClass = "JavaCheck";
+            runnableJar = argv[++next];
+            vmStrings.push_back("-Djava.class.path=" + runnableJar);
             ++next;
             break;
         } else if (arg == "--add-opens" || arg == "--add-exports" ||
@@ -125,7 +177,7 @@ int main(int argc, char** argv)
             break;
         }
     }
-    if (mainClass.empty())
+    if (mainClass.empty() && runnableJar.empty())
         return usageError("a classe Java de entrada não foi informada");
     for (; next < argc; ++next)
         appArgs.emplace_back(argv[next]);
@@ -185,6 +237,18 @@ int main(int argc, char** argv)
         return 72;
     }
 
+    if (!runnableJar.empty()) {
+        mainClass = manifestMainClass(env, runnableJar);
+        if (mainClass.empty() || env->ExceptionCheck()) {
+            if (env->ExceptionCheck())
+                env->ExceptionDescribe();
+            else
+                std::fprintf(stderr, "JAR não declara Main-Class: %s\n", runnableJar.c_str());
+            vm->DestroyJavaVM();
+            dlclose(library);
+            return 77;
+        }
+    }
     std::replace(mainClass.begin(), mainClass.end(), '.', '/');
     jclass entry = env->FindClass(mainClass.c_str());
     if (!entry || env->ExceptionCheck()) {

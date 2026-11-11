@@ -18,7 +18,9 @@ c++ -std=c++17 -Wall -Wextra -Werror \
 javac -encoding UTF-8 -d "$TEST_DIR" \
   "$ROOT/scripts/tests/TestMain.java" \
   "$UPSTREAM/libraries/javacheck/JavaCheck.java"
-(cd "$TEST_DIR" && jar cf JavaCheck.jar JavaCheck.class)
+(cd "$TEST_DIR" && jar cfe JavaCheck.jar JavaCheck JavaCheck.class)
+(cd "$TEST_DIR" && jar cfe TestApp.jar TestMain TestMain.class)
+(cd "$TEST_DIR" && jar cf MissingMain.jar TestMain.class)
 RUNNER="$TEST_DIR/java_runner"
 output="$(PINECONE_JVM_LIBRARY="$JVM_LIB" PINECONE_JAVA_HOME="$JAVA_HOME" PINECONE_NATIVE_LIB_DIR="$TEST_DIR/native" "$RUNNER" \
   -Dpinecone.test=it_works -Djava.library.path=/minecraft/natives -cp "$TEST_DIR" TestMain alpha beta)"
@@ -34,16 +36,23 @@ check="$(PINECONE_JVM_LIBRARY="$JVM_LIB" "$RUNNER" -jar "$TEST_DIR/JavaCheck.jar
 grep -q '^os.arch=' <<< "$check"
 grep -q '^java.version=' <<< "$check"
 grep -q '^java.vendor=' <<< "$check"
+jar_output="$(PINECONE_JVM_LIBRARY="$JVM_LIB" "$RUNNER" -jar "$TEST_DIR/TestApp.jar" one two)"
+grep -qx 'PINECONE_RUNNER_OK:one|two' <<< "$jar_output"
+
 set +e
+PINECONE_JVM_LIBRARY="$JVM_LIB" "$RUNNER" -jar "$TEST_DIR/MissingMain.jar" > "$TEST_DIR/no-main.log" 2>&1
+missing_main_status=$?
 PINECONE_JVM_LIBRARY="$JVM_LIB" "$RUNNER" --invalid-option > "$TEST_DIR/invalid.log" 2>&1
 bad_arg_status=$?
 PINECONE_JVM_LIBRARY="$TEST_DIR/missing.so" "$RUNNER" -cp "$TEST_DIR" TestMain > "$TEST_DIR/missing.log" 2>&1
 missing_jvm_status=$?
 set -e
+test "$missing_main_status" -eq 77
 test "$bad_arg_status" -eq 64
 test "$missing_jvm_status" -eq 70
 printf '%s\n' \
   'PASS: Java classpath, Java arguments and main class' \
   'PASS: original PineconeMC JavaCheck.jar through JNI' \
+  'PASS: arbitrary -jar Main-Class manifest and missing-main error' \
   'PASS: invalid CLI and missing JVM statuses' \
   'Scope: Linux host only, Android game runtime still untested'
