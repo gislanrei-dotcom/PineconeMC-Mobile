@@ -1,0 +1,40 @@
+name: Prepare experimental OpenJDK17 ARM64 runtime candidate
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'research/openjdk17_candidate.py'
+      - '.github/workflows/openjdk17-candidate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  prepare-runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ELF relocation helper
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get -o Acquire::Retries=3 update
+          sudo apt-get -o Acquire::Retries=3 install -y patchelf
+      - name: Prepare and audit untested Java runtime layout
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 -m py_compile research/openjdk17_candidate.py
+          python3 research/openjdk17_candidate.py
+          test -s candidate/android/libs/arm64-v8a/libjvm.so
+          test -s candidate/android/assets/runtime/java-17/lib/modules
+          grep -F 'lib/server/libjvm.so' candidate/android/assets/runtime/java-17/manifest.tsv
+      - name: Upload report and layout manifest only
+        uses: actions/upload-artifact@v4
+        with:
+          name: PineconeMC-OpenJDK17-Unverified-Relocation-Report
+          path: |
+            candidate/CANDIDATE-REPORT.txt
+            candidate/android/assets/runtime/java-17/manifest.tsv
+          retention-days: 7
+          if-no-files-found: error
