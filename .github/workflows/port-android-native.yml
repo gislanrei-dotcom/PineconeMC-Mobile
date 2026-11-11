@@ -110,7 +110,7 @@ jobs:
             -DANDROID_ABI=arm64-v8a \
             -DANDROID_PLATFORM=android-28 \
             -DCMAKE_SYSTEM_VERSION=28 \
-            -DPINECONE_EXPERIMENTAL_JAVA_RUNNER=OFF \
+            -DPINECONE_EXPERIMENTAL_JAVA_RUNNER=ON \
             -DLauncher_BUILD_PLATFORM=android-arm64 \
             -DLauncher_USE_PCH=OFF \
             -DLauncher_ENABLE_JAVA_DOWNLOADER=OFF \
@@ -141,6 +141,12 @@ jobs:
         run: |
           set -euxo pipefail
           cmake --build build-android --parallel 3
+          # Native subprocess is a real Android PIE executable, not a Qt
+          # autoloaded shared library. Confirm it was emitted before APK check.
+          RUNNER=android/libs/arm64-v8a/libpinecone_java.so
+          test -s "$RUNNER"
+          file "$RUNNER"
+          "${ANDROID_HOME}/ndk/26.1.10909125/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -h "$RUNNER" | grep -F 'AArch64'
 
       # qt_add_executable() creates the Android APK during the default build.
       # Do not invoke an undefined global 'apk' target a second time.

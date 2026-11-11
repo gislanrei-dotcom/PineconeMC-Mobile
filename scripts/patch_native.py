@@ -202,10 +202,13 @@ if(ANDROID)
             "${CMAKE_SOURCE_DIR}/../android/runtime/JavaRunner.cpp")
         target_compile_features(pinecone_java_runner PRIVATE cxx_std_17)
         target_link_libraries(pinecone_java_runner PRIVATE dl)
+        # Package this PIE executable as a native lib filename so Android
+        # 10+ can execute it from the APK's nativeLibraryDir. Do NOT use
+        # QT_ANDROID_EXTRA_LIBS: Qt would dlopen() it during app startup.
         set_target_properties(pinecone_java_runner PROPERTIES
-            PREFIX "lib" OUTPUT_NAME "pinecone_java" SUFFIX ".so")
-        set_property(TARGET ${Launcher_Name} APPEND PROPERTY
-            QT_ANDROID_EXTRA_LIBS "$<TARGET_FILE:pinecone_java_runner>")
+            PREFIX "lib" OUTPUT_NAME "pinecone_java" SUFFIX ".so"
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/../android/libs/${ANDROID_ABI}")
+        add_dependencies(${Launcher_Name} pinecone_java_runner)
     endif()
 endif()""")
 

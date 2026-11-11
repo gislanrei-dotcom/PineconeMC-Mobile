@@ -42,6 +42,10 @@ with zipfile.ZipFile(apk) as archive:
             fail("Expected ELF64 Little-Endian AArch64: " + path)
     if not any("elyprismlauncher" in path.lower() for path in arm_libs):
         fail("Original PineconeMC ARM64 library is not in the APK")
+    # The independent Java subprocess must be packaged but NOT auto-loaded
+    # by Qt during app startup. This does not assert any JVM is bundled.
+    if "lib/arm64-v8a/libpinecone_java.so" not in arm_libs:
+        fail("Missing Android ARM64 JNI subprocess libpinecone_java.so")
     if any(any(term in e.lower() for term in ("foldcraft", "fclcore", "pojavlauncher")) for e in entries):
         fail("An unrelated Android launcher was included")
 

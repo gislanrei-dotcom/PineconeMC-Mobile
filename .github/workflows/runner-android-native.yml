@@ -1,0 +1,37 @@
+name: JNI JavaRunner standalone Android ARM64 check
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'android/runtime/JavaRunner.cpp'
+      - 'scripts/patch_native.py'
+      - '.github/workflows/runner-android-native.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  runner-elf-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cross-compile original JNI subprocess for Android ARM64
+        shell: bash
+        run: |
+          set -euxo pipefail
+          NDK="${ANDROID_HOME}/ndk/26.1.10909125"
+          TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
+          CXX="$TOOLCHAIN/bin/aarch64-linux-android28-clang++"
+          test -x "$CXX"
+          mkdir -p out
+          "$CXX" -std=c++17 -Wall -Wextra -Werror -fPIE -pie \
+            android/runtime/JavaRunner.cpp -ldl -o out/libpinecone_java.so
+          test -s out/libpinecone_java.so
+          "$TOOLCHAIN/bin/llvm-readelf" -h out/libpinecone_java.so | grep -F AArch64
+          "$TOOLCHAIN/bin/llvm-readelf" -l out/libpinecone_java.so | grep -F INTERP
+      - name: Upload isolated executable (not a game APK)
+        uses: actions/upload-artifact@v4
+        with:
+          name: PineconeMC-JNI-Runner-ARM64-Test-Only
+          path: out/libpinecone_java.so
+          retention-days: 3
