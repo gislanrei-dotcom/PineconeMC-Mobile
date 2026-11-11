@@ -103,6 +103,12 @@ jobs:
           mkdir -p android/assets android/libs/arm64-v8a
           cp -a candidate/android/assets/. android/assets/
           cp -a candidate/android/libs/. android/libs/
+          # IMPORTANT: The experimental Termux STL must not replace Qt's
+          # Android NDK STL. Qt loads this at startup before any Java runtime.
+          NDK_CXX="${ANDROID_HOME}/ndk/26.1.10909125/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so"
+          test -s "$NDK_CXX"
+          cp "$NDK_CXX" android/libs/arm64-v8a/libc++_shared.so
+          sha256sum "$NDK_CXX" android/libs/arm64-v8a/libc++_shared.so
           test -s android/libs/arm64-v8a/libjvm.so
           test -s android/assets/runtime/java-17/lib/modules
           test -s android/assets/runtime/java-17/manifest.tsv
@@ -197,6 +203,18 @@ jobs:
             --out "$APK" "$ALIGNED_APK"
           "$TOOLS/apksigner" verify --verbose --min-sdk-version 28 "$APK"
           python3 scripts/validate_apk.py "$APK"
+          # Ensure the exact unmodified NDK STL, not Termux's repackaged
+          # version, is the one actually present in the finished APK.
+          python3 - "$APK" "$NDK_CXX" <<'PY'
+          import hashlib, pathlib, sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as package:
+              included = package.read("lib/arm64-v8a/libc++_shared.so")
+          expected = pathlib.Path(sys.argv[2]).read_bytes()
+          assert hashlib.sha256(included).digest() == hashlib.sha256(expected).digest(), (
+              "APK replaced the NDK libc++_shared.so with another C++ runtime"
+          )
+          print("Qt startup C++ runtime matches NDK official shared library.")
+          PY
           # Verify every Java asset and native symlink target survived
           # androiddeployqt/Gradle assembly, not just the source overlay.
           python3 - "$APK" <<'PY'

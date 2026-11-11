@@ -64,6 +64,11 @@ def main():
     skipped = []
 
     def stage_native(original, name):
+        # The launcher uses Qt's NDK C++ runtime. The Termux C++ runtime is
+        # incompatible with Qt's startup contract and must NEVER overwrite
+        # the NDK libc++_shared.so during androiddeployqt/Gradle packaging.
+        if name == "libc++_shared.so":
+            return
         if not re.fullmatch(r"lib[A-Za-z0-9_.+-]+\.so", name):
             raise RuntimeError("Invalid native library name " + name)
         if not arm64(original):
@@ -166,10 +171,13 @@ def main():
                                     capture_output=True, text=True, check=True)
             needed.update(result.stdout.splitlines())
         system = {"libc.so", "libm.so", "libdl.so", "liblog.so", "libandroid.so",
-                  "libz.so", "libEGL.so", "libGLESv2.so", "libOpenSLES.so"}
+                  "libz.so", "libEGL.so", "libGLESv2.so", "libOpenSLES.so",
+                  "libc++_shared.so"}
         missing = sorted(needed - set(stored) - system)
         details = [
             "Experimental OpenJDK17 ARM64 Bionic candidate - NO Android launch test",
+            "Important: Termux libc++_shared.so is EXCLUDED. Android APK must use the",
+            "unmodified Google NDK libc++_shared.so used by Qt, verified after packaging.",
             f"Runtime assets: {len(manifest)}",
             f"Native ELF libraries: {len(stored)}",
             f"Java modules bytes: {(assets / 'lib/modules').stat().st_size}",
