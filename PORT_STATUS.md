@@ -57,3 +57,14 @@ O runtime OpenJDK/LWJGL e o controle touchscreen ainda não foram implementados;
 ## Detector de runtime Java 17 no Android
 
 O arquivo `android/native/AndroidRuntime.cpp` consulta `nativeLibraryDir` via JNI e verifica a presença do futuro executável Java, `libjvm.so` e módulos Java 17. `CheckJava.cpp` passa a exibir erro explícito em português se o runtime ainda não estiver disponível, em vez de tentar usar o Java desktop. **O runtime e a ponte LWJGL ainda não estão implementados.** O Android impede executar binários de diretórios graváveis do app com target SDK moderno; o Java executável terá de ser incluído no APK.
+
+
+## Atualização comprovada — 11/11/2026
+
+**As notas mais antigas acima são histórico e descrevem condições que já mudaram.**
+
+- A restrição do Actions foi resolvida ao tornar o projeto público: runner Ubuntu e Windows iniciaram; o bloqueio de faturamento anterior não está mais ativo.
+- A [Build #33](https://github.com/gislanrei-dotcom/PineconeMC-Mobile/actions/runs/43083877125) **terminou com sucesso**, entregando um APK assinado **apenas para teste da interface Qt**. Nem inicialização em aparelho nem Minecraft jogável foram verificados.
+- O processo Java JNI separado `libpinecone_java.so` teve cross-compilation AArch64 validada no [teste independente](https://github.com/gislanrei-dotcom/PineconeMC-Mobile/actions/runs/43093150921). A Build #35 testa a inclusão no pacote Qt Android, mas estava em execução na última verificação.
+- Uma [auditoria específica de OpenJDK 17 ARM64 Android](https://github.com/gislanrei-dotcom/PineconeMC-Mobile/actions/runs/43093916689) identificou o pacote oficial Termux `17.0.21-2`: o `libjvm.so` é AArch64/Bionic, mas seu RUNPATH aponta para `/data/data/com.termux/files/usr`, há dependência direta `libandroid-shmem.so`, e a instalação JDK ocupa 213 MB. Não foi incluída no APK: exige adaptação e provas de execução/redistribuição.
+- A lógica original de instâncias e autenticação permanece na árvore C++; **execução Java SE real, GLFW/LWJGL/EGL, áudio e toque para o jogo seguem pendentes**.

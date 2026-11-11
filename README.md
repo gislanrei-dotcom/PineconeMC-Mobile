@@ -1,39 +1,29 @@
-# PineconeMC Mobile — port nativo do PineconeMC (Android ARM64)
+# PineconeMC Mobile — port nativo Android ARM64
 
-**Este projeto é o port nativo do PineconeMC original para Android; não utiliza nenhum launcher Android de terceiros como base.** Parte exclusivamente do [código-fonte oficial do PineconeMC](https://github.com/ElyPrismLauncher/Launcher), revisão fixada `9d6572797078947314b1f1737590bc157a259958`. O projeto oficial é escrito em C++20/Qt 6 e já contém o gerenciamento de instâncias, os downloads e a autenticação Ely.by.
+Este projeto porta **o PineconeMC original** (código C++20/Qt 6), sem usar FoldCraftLauncher, Pojav ou outro launcher Android como base. A fonte original é [ElyPrismLauncher/Launcher](https://github.com/ElyPrismLauncher/Launcher) no commit fixado `9d6572797078947314b1f1737590bc157a259958`.
 
-## Estado atualizado em 10/11/2026
+## Estado comprovado em 11/11/2026
 
-**Concluído no código:** C++/Qt oficial compilado para Android ARM64 na Build #8; empacotamento Qt APK de diagnóstico preparado; manifesto, armazenamento interno Android, JARs de inicialização PineconeMC, ícone oficial, verificação de ELF ARM64 e assinatura. O detector do OpenJDK está ligado ao `CheckJava`, e existe um protótipo nativo independente de inicializador Java baseado em `JNI_CreateJavaVM`, disponível em `android/runtime/JavaRunner.cpp` (desativado na compilação padrão).
+- **[Build #33 — concluída com sucesso](https://github.com/gislanrei-dotcom/PineconeMC-Mobile/actions/runs/43083877125):** compilou o código C++ original para ARM64, criou e assinou um **APK de diagnóstico da interface Qt**, verificou bibliotecas ARM64, o pacote `ru.pineconemc.mobile` e os três JARs Java do projeto. O artefato `PineconeMC-Native-ARM64-UI-SMOKE-ONLY` contém o APK e está disponível no GitHub Actions por tempo limitado. **Não foi testado instalado em um celular.**
+- **[Teste JNI nativo — concluído com sucesso](https://github.com/gislanrei-dotcom/PineconeMC-Mobile/actions/runs/43093150921):** compilou o novo processo `libpinecone_java.so` com NDK para AArch64 e verificou o formato ELF. O protótipo também passou em testes de execução com Java 21 no Linux; isso **não valida uma JVM Java SE no Android**.
+- **[Build de integração JNI + Qt](https://github.com/gislanrei-dotcom/PineconeMC-Mobile/actions/runs/43093151155):** iniciada para incluir esse processo no APK (commit `1626f60d`). A aprovação do teste JNI isolado não implica que o APK integrado já tenha terminado.
+- **[Auditoria OpenJDK 17 Android](https://github.com/gislanrei-dotcom/PineconeMC-Mobile/actions/runs/43093916689):** o pacote Bionic do Termux foi inspecionado, **sem distribuí-lo**. Ocupa cerca de 213 MB instalado, tem dependências nativas e caminhos absolutos `/data/data/com.termux/`, que impedem supor que funcionará diretamente em outro aplicativo.
 
-**Pendente:** produzir OpenJDK para Android/Bionic, incluir `libjvm.so` e módulos da JVM, compilar/testar o processo Java, integrar LWJGL, renderização, áudio e controles touchscreen, e validar o launcher no celular. **Nenhum APK foi gerado ou publicado a partir das alterações recentes** e não foi verificado gameplay nem login Ely.by.
+### Ainda não é um launcher jogável
 
-**Bloqueio atual do CI:** GitHub Actions não está atribuindo runners para novos jobs (`runner_id=0`, `steps=[]`), inclusive num teste mínimo de shell sem dependências. A configuração de cobrança/limites do GitHub pode explicar isso, mas não foi possível confirmar pelo conector. Consultar [Actions](https://github.com/gislanrei-dotcom/PineconeMC-Mobile/actions) e a [issue de acompanhamento](https://github.com/gislanrei-dotcom/PineconeMC-Mobile/issues/1).
+**Faltam:** runtime OpenJDK 17 realmente adaptado ao espaço privado deste aplicativo e suas bibliotecas nativas; carregamento do jogo; ponte LWJGL/GLFW para EGL/OpenGL ES ou Vulkan; áudio; controles touchscreen; testes no aparelho e login Ely.by. O APK da Build #33 é exclusivamente um **teste da interface**, não executa Minecraft Java.
 
-## Por que ainda não há APK jogável?
+## Estrutura do repositório
 
-O PineconeMC oficial é um aplicativo desktop. Os passos `JavaCheck` e `LaunchTask` executam Java como processo externo (`QProcess`). Android não fornece esse ambiente Java Edition nem as bibliotecas GLFW/LWJGL apropriadas. Portar o Qt para Android **não** faz o Minecraft rodar por si só.
+- `scripts/patch_native.py`: adapta a fonte do PineconeMC original ao Android/Qt sem substituí-la.
+- `android/AndroidManifest.xml` e `android/native/AndroidRuntime.cpp`: aplicação Android e pré-requisitos de runtime.
+- `android/runtime/JavaRunner.cpp`: processo JNI independente para uma futura JVM Java SE; não é Android ART nem contém OpenJDK.
+- `scripts/test_java_runner.sh`: testes do adaptador Java com uma JVM Linux host.
+- `scripts/validate_apk.py`: validação estrutural e de ABI do APK de teste.
+- `.github/workflows/port-android-native.yml`: compilação e empacotamento ARM64.
+- `.github/workflows/runner-android-native.yml`: compilação isolada do executável JNI ARM64.
+- `.github/workflows/openjdk-android-audit.yml`: auditoria de dependências do runtime, sem importar binários de terceiros.
 
-A compilação nativa **C++20/Qt 6.8 para Android ARM64 foi concluída** em [Build #8](https://github.com/gislanrei-dotcom/PineconeMC-Mobile/actions/runs/42820792083). O workflow seguinte prepara um APK Android com o mesmo código C++, os JARs de inicialização oficiais do PineconeMC, armazenamento privado e verificações do pacote. O resultado é apenas um **teste de integração da interface**, não um launcher jogável; por isso não é publicado em Releases.
+Este port preserva a árvore e os avisos de licença do projeto original. Código principal GPL-3.0-only. Toda eventual distribuição de um runtime OpenJDK deverá respeitar as licenças e notificações correspondentes.
 
-## Arquivos
-
-- `.github/workflows/port-android-native.yml`: instalação Qt 6 para Android, NDK, dependências do PineconeMC e build CMake;
-- `scripts/patch_native.py`: correções de Qt/CMake e diretórios/arquivos Java do **próprio** PineconeMC para Android;
-- `android/AndroidManifest.xml`: pacote Android horizontal, permissões e QtActivity;
-- `scripts/validate_apk.py`: valida o APK e os JARs originais (sem certificar execução de Minecraft);
-- `PORT_STATUS.md`: progresso e o que falta validar.
-
-## Política
-
-Este port preserva os arquivos de licença do PineconeMC e sua árvore de código. PineconeMC em si é um fork GPL-3.0-only de Prism Launcher; usar o código oficial implica preservar esses avisos, e não exige motor de launcher Android externo. Java/OpenJDK, Android SDK/NDK e Qt são runtimes/ferramentas, não launchers substitutos.
-
-O APK final só poderá ser chamado de funcional depois de rodar Minecraft Java no Android real e passar pelo login Ely.by.
-
-**Branch principal:** a `main` contém apenas os arquivos ativos deste port nativo. O código do PineconeMC é obtido diretamente do repositório oficial durante a compilação.
-
-## Bloqueio atual de compilação
-
-GitHub Actions não está conseguindo atribuir runner a nenhum workflow novo: inclusive o teste mínimo em `ubuntu-latest` falhou com `runner_id=0` e nenhuma etapa iniciada. O bloqueio começou depois da Build #8. A causa não foi identificada pelo conector; verificar a mensagem no [Actions](https://github.com/gislanrei-dotcom/PineconeMC-Mobile/actions) e, se necessário, em **Settings → Billing & Licensing → Usage**. Limites/cobrança de Actions são uma possibilidade, não uma confirmação.
-
-O acompanhamento das etapas restantes está na [issue #1](https://github.com/gislanrei-dotcom/PineconeMC-Mobile/issues/1). O projeto não utiliza FoldCraftLauncher nem outro launcher Android como base.
+**Acompanhamento:** [issue #1](https://github.com/gislanrei-dotcom/PineconeMC-Mobile/issues/1).
