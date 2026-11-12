@@ -505,17 +505,16 @@ patch("launcher/Application.cpp",
 #endif
     bool languageRequired = settings()->get("Language").toString().isEmpty();''')
 
-# The original Qt desktop modal restores a >600px high saved geometry.
-# On a landscape phone the top is covered by Android's native title/status
-# area, and the instance name and controls end up off screen. Use a genuine
-# scrollable mobile dialog with fixed touch actions and NO desktop geometry.
+# Keep the upstream instance-form hierarchy intact on Android. The previous
+# attempt moved its QGridLayout and nested PageContainer into another scroll
+# area and placed duplicate action buttons at the top; this broke the page
+# viewport, obscured the name/group inputs and confused touch navigation.
+# The original PageContainer already scrolls the active page. Keep its real
+# OK/Cancel/Help QDialogButtonBox at the BOTTOM and never reparent its layout.
 patch("launcher/ui/dialogs/NewInstanceDialog.cpp",
       '#include <QScreen>',
       '''#include <QScreen>
 #ifdef Q_OS_ANDROID
-#include <QScrollArea>
-#include <QHBoxLayout>
-#include <QVBoxLayout>
 #include <QGuiApplication>
 #endif''')
 patch("launcher/ui/dialogs/NewInstanceDialog.cpp",
@@ -527,55 +526,31 @@ patch("launcher/ui/dialogs/NewInstanceDialog.cpp",
         resize(width(), qMin(geometry.height() - 50, 710));
     }''',
       '''#ifdef Q_OS_ANDROID
-    // Move the original name/group header and the REAL PageContainer into a
-    // scroll area. Their existing models, search, mod loaders and callbacks
-    // remain unchanged; scrolling reveals controls otherwise offscreen.
-    auto* scrollContent = new QWidget(this);
-    auto* contentLayout = new QVBoxLayout(scrollContent);
-    contentLayout->setContentsMargins(6, 4, 6, 6);
-    contentLayout->setSpacing(4);
-    while (ui->verticalLayout->count() > 0) {
-        auto* child = ui->verticalLayout->takeAt(0);
-        contentLayout->addItem(child);
-    }
-    auto* scroll = new QScrollArea(this);
-    scroll->setObjectName(QStringLiteral("androidInstanceScroll"));
-    scroll->setWidgetResizable(true);
-    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    scroll->setFrameShape(QFrame::NoFrame);
-    scroll->setWidget(scrollContent);
-
-    ui->verticalLayout->setContentsMargins(8, 0, 8, 6);
-    ui->verticalLayout->setSpacing(5);
-    // Keep all top controls below the Qt Android activity/title overlay.
-    ui->verticalLayout->addSpacing(0);
-    auto* mobileButtons = new QHBoxLayout;
-    auto* dismiss = new QPushButton(QStringLiteral("Cancelar"), this);
-    auto* create = new QPushButton(QStringLiteral("Criar instância"), this);
-    dismiss->setMinimumHeight(44);
-    create->setMinimumHeight(44);
-    mobileButtons->addWidget(dismiss);
-    mobileButtons->addStretch();
-    mobileButtons->addWidget(create);
-    connect(dismiss, &QPushButton::clicked, this, &NewInstanceDialog::reject);
-    connect(create, &QPushButton::clicked, this, [this]() {
-        auto* original = m_buttons->button(QDialogButtonBox::Ok);
-        if (original && original->isEnabled())
-            original->click();
-    });
-    ui->verticalLayout->addLayout(mobileButtons);
-    ui->verticalLayout->addWidget(scroll, 1);
+    // Original header, page stack and footer remain in one QVBoxLayout.
+    // No duplicated top buttons; original QDialogButtonBox stays at bottom.
+    ui->verticalLayout->setContentsMargins(7, 6, 7, 7);
+    ui->verticalLayout->setSpacing(2);
+    ui->iconButton->setIconSize(QSize(40, 40));
+    ui->iconButton->setMaximumSize(QSize(48, 48));
+    m_container->setMinimumSize(0, 0);
+    m_container->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    auto* originalOk = m_buttons->button(QDialogButtonBox::Ok);
+    auto* originalCancel = m_buttons->button(QDialogButtonBox::Cancel);
+    originalOk->setText(QStringLiteral("Criar instância"));
+    originalCancel->setText(QStringLiteral("Cancelar"));
+    originalOk->setMinimumHeight(46);
+    originalCancel->setMinimumHeight(46);
+    m_buttons->setMinimumHeight(52);
     setMinimumSize(0, 0);
-    const QScreen* mobileScreen = parent ? parent->screen() : QGuiApplication::primaryScreen();
-    if (mobileScreen) {
-        const QSize viewport = mobileScreen->availableGeometry().size();
-        setMaximumSize(qMax(320, viewport.width() - 10),
-                       qMax(240, viewport.height() - 12));
-        resize(qMin(1000, qMax(320, viewport.width() - 10)),
-               qMin(610, qMax(240, viewport.height() - 12)));
+    // Android's window manager assigns the actual available geometry;
+    // never restore the saved desktop dialog size.
+    const QScreen* display = parent ? parent->screen() : QGuiApplication::primaryScreen();
+    if (display) {
+        const QSize size = display->availableGeometry().size();
+        setMaximumSize(size);
+        resize(size);
     }
-    qInfo() << "PineconeMC Android: scrollable new-instance dialog";
+    qInfo() << "PineconeMC Android: original instance form with bottom actions";
 #else
     if (APPLICATION->settings()->get("NewInstanceGeometry").isValid()) {
         restoreGeometry(QByteArray::fromBase64(APPLICATION->settings()->get("NewInstanceGeometry").toString().toUtf8()));
@@ -813,13 +788,13 @@ patch("launcher/ui/widgets/PageContainer.cpp",
 #endif
     m_layout->setColumnStretch(1, 4);''')
 
-# The new instance dialog is also modal. Force the same fullscreen dialog
-# presentation on mobile, with a scrollable form and fixed action row.
+# Fullscreen mobile dialog retains the real bottom buttons, with no extra
+# headers or nested reparented scrolling containers.
 patch("launcher/ui/dialogs/NewInstanceDialog.cpp",
-      '''    qInfo() << "PineconeMC Android: scrollable new-instance dialog";''',
+      '''    qInfo() << "PineconeMC Android: original instance form with bottom actions";''',
       '''    setWindowFlag(Qt::FramelessWindowHint, true);
     setWindowState(windowState() | Qt::WindowFullScreen);
-    qInfo() << "PineconeMC Android: fullscreen scrollable new-instance dialog";''')
+    qInfo() << "PineconeMC Android: fullscreen original instance form";''')
 
 # The original empty-state overlay is sized for desktop. Reduce its text and
 # make it explicit that an instance must be created before anything can appear.
