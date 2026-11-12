@@ -274,6 +274,36 @@ patch("launcher/Application.cpp",
     bool languageRequired = settings()->get("Language").toString().isEmpty();''')
 
 
+# Seed the official upstream Minecraft version index on a fresh Android
+# install. The existing Meta::BaseEntity code still verifies/refreshes online
+# content as usual, but a carrier/firewall/network timeout cannot leave the
+# New Instance list completely empty on first launch.
+patch("launcher/Application.cpp",
+      '        m_translations.reset(new TranslationsModel("translations"));',
+      '''#ifdef Q_OS_ANDROID
+        QDir().mkpath(QStringLiteral("meta/net.minecraft"));
+        for (const QString& relative : {QStringLiteral("index.json"),
+                                        QStringLiteral("net.minecraft/index.json")}) {
+            const QString destination = QStringLiteral("meta/") + relative;
+            if (QFile::exists(destination) && QFileInfo(destination).size() > 1000)
+                continue;
+            QFile source(QStringLiteral("assets:/bootstrap-meta/") + relative);
+            if (!source.open(QIODevice::ReadOnly)) {
+                qWarning() << "PineconeMC Android: no bundled Minecraft catalog" << relative;
+                continue;
+            }
+            const QByteArray bytes = source.readAll();
+            QSaveFile target(destination);
+            if (!target.open(QIODevice::WriteOnly) ||
+                target.write(bytes) != bytes.size() || !target.commit()) {
+                qWarning() << "PineconeMC Android: cannot seed Minecraft metadata" << destination;
+            } else {
+                qInfo() << "PineconeMC Android: installed official Minecraft metadata" << destination;
+            }
+        }
+#endif
+        m_translations.reset(new TranslationsModel("translations"));''')
+
 # Preinstall the official-derived Brazilian Portuguese Qt catalog in the
 # application's real translations directory BEFORE TranslationsModel starts.
 # Without an index file, upstream reloadLocalFiles() returns early and shows
@@ -461,14 +491,17 @@ patch("launcher/ui/instanceview/InstanceView.cpp",
 patch("launcher/Application.cpp",
       '    bool languageRequired = settings()->get("Language").toString().isEmpty();',
       '''#ifdef Q_OS_ANDROID
-    if (settings()->get("MetaURLOverride").toString().trimmed().isEmpty()) {
+    const QString oldMeta = settings()->get("MetaURLOverride").toString().trimmed();
+    if (oldMeta.isEmpty() ||
+        oldMeta.startsWith(QStringLiteral("https://meta.pineconemc.ru/")) ||
+        oldMeta.startsWith(QStringLiteral("https://pineconemc.github.io/"))) {
         settings()->set("MetaURLOverride",
                         QStringLiteral("https://elyprismlauncher.github.io/meta/v1/"));
-        // Prevent PineconeNetworkCheck from replacing a working metadata
-        // mirror based only on a HEAD request to the separate website host.
-        settings()->set("PineconeAutoServers", false);
         qInfo() << "PineconeMC Android: official GitHub metadata mirror selected";
     }
+    // Prevent a successful HEAD to a different host from overwriting the
+    // selected metadata endpoint with a URL that fails on the phone.
+    settings()->set("PineconeAutoServers", false);
 #endif
     bool languageRequired = settings()->get("Language").toString().isEmpty();''')
 
