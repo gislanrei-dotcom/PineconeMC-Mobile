@@ -322,14 +322,15 @@ patch("launcher/ui/MainWindow.cpp",
     ui->actionCAT->setVisible(APPLICATION->settings()->get("CatButtonVisible").toBool());''',
       '''#ifdef Q_OS_ANDROID
     ui->menuBar->setVisible(false);
-    ui->mainToolBar->setVisible(true);
+    ui->mainToolBar->setVisible(false);
     ui->mainToolBar->setMovable(false);
     ui->mainToolBar->setFloatable(false);
     ui->mainToolBar->setIconSize(QSize(22, 22));
     ui->mainToolBar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    ui->mainToolBar->setMinimumHeight(46);
+    ui->mainToolBar->setMinimumHeight(0);
     ui->instanceToolBar->setVisible(false);
     ui->newsToolBar->setVisible(false);
+    ui->statusBar->setVisible(false);
     // Keep touch-sized original actions; they trigger the REAL C++ handlers.
     ui->actionAddInstance->setText(QStringLiteral("Adicionar instância"));
     ui->actionSettings->setText(QStringLiteral("Configurações"));
@@ -357,7 +358,7 @@ patch("launcher/Application.cpp",
         // Desktop window-state snapshots can hide the action toolbar on a
         // phone, and Qt Android doesn't expose desktop menu-bar controls.
         if (auto* toolbar = m_mainWindow->findChild<QToolBar*>(QStringLiteral("mainToolBar"))) {
-            toolbar->show();
+            toolbar->hide();
         }
 #endif''')
 patch("launcher/Application.cpp",
@@ -385,7 +386,7 @@ patch("launcher/ui/MainWindow.cpp",
         // not just the left controls. Otherwise the first instance is hidden.
         auto* instancePanel = new QWidget(ui->centralWidget);
         auto* instanceLayout = new QVBoxLayout(instancePanel);
-        instanceLayout->setContentsMargins(0, 86, 4, 0);
+        instanceLayout->setContentsMargins(0, 0, 0, 0);
         instanceLayout->setSpacing(0);
         instanceLayout->addWidget(view);
         ui->horizontalLayout->addWidget(instancePanel, 1);
@@ -398,16 +399,16 @@ patch("launcher/ui/MainWindow.cpp",
         // without replacing the original instance list or changing its model.
         auto* mobileActionRail = new QWidget(ui->centralWidget);
         mobileActionRail->setObjectName(QStringLiteral("mobileActionRail"));
-        mobileActionRail->setFixedWidth(174);
+        mobileActionRail->setFixedWidth(146);
         mobileActionRail->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
         auto* mobileActions = new QVBoxLayout(mobileActionRail);
         // Qt for Android reserves a native title/status inset above the Qt
         // content; keep the FIRST action below that area.
-        mobileActions->setContentsMargins(8, 86, 8, 10);
-        mobileActions->setSpacing(10);
-        auto* addInstance = new QPushButton(QStringLiteral("+ Adicionar instância"), mobileActionRail);
+        mobileActions->setContentsMargins(6, 6, 6, 6);
+        mobileActions->setSpacing(6);
+        auto* addInstance = new QPushButton(QStringLiteral("+ Instância"), mobileActionRail);
         addInstance->setObjectName(QStringLiteral("androidAddInstance"));
-        addInstance->setMinimumHeight(54);
+        addInstance->setMinimumHeight(46);
         addInstance->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         addInstance->setToolTip(QStringLiteral("Criar uma instância do Minecraft Java"));
         mobileActions->addWidget(addInstance);
@@ -515,7 +516,7 @@ patch("launcher/ui/dialogs/NewInstanceDialog.cpp",
     ui->verticalLayout->setContentsMargins(8, 0, 8, 6);
     ui->verticalLayout->setSpacing(5);
     // Keep all top controls below the Qt Android activity/title overlay.
-    ui->verticalLayout->addSpacing(78);
+    ui->verticalLayout->addSpacing(0);
     auto* mobileButtons = new QHBoxLayout;
     auto* dismiss = new QPushButton(QStringLiteral("Cancelar"), this);
     auto* create = new QPushButton(QStringLiteral("Criar instância"), this);
