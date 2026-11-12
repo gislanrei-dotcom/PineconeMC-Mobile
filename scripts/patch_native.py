@@ -699,4 +699,108 @@ patch("launcher/ui/setupwizard/SetupWizard.cpp",
     });
 #endif''')
 
+# The Android activity now uses a no-title fullscreen theme; show the
+# original Qt main window fullscreen as well. Never restore a desktop window
+# rectangle as the phone viewport: it clips the instance list and menus.
+patch("launcher/Application.cpp",
+      '''        m_mainWindow->restoreGeometry(QByteArray::fromBase64(APPLICATION->settings()->get("MainWindowGeometry").toString().toUtf8()));''',
+      '''#ifndef Q_OS_ANDROID
+        m_mainWindow->restoreGeometry(QByteArray::fromBase64(APPLICATION->settings()->get("MainWindowGeometry").toString().toUtf8()));
+#endif''')
+patch("launcher/Application.cpp",
+      '''        } else {
+            m_mainWindow->show();
+        }
+
+        m_mainWindow->checkInstancePathForProblems();''',
+      '''        } else {
+#ifdef Q_OS_ANDROID
+            m_mainWindow->showFullScreen();
+#else
+            m_mainWindow->show();
+#endif
+        }
+
+        m_mainWindow->checkInstancePathForProblems();''')
+
+# Native dialogs must fit the current Android viewport, rather than desktop
+# geometry saved on a previous run. This makes settings/other pages readable.
+patch("launcher/ui/pagedialog/PageDialog.cpp",
+      '#include <QVBoxLayout>',
+      '''#include <QVBoxLayout>
+#ifdef Q_OS_ANDROID
+#include <QScreen>
+#include <QGuiApplication>
+#endif''')
+patch("launcher/ui/pagedialog/PageDialog.cpp",
+      '''    restoreGeometry(QByteArray::fromBase64(APPLICATION->settings()->get("PagedGeometry").toString().toUtf8()));''',
+      '''#ifdef Q_OS_ANDROID
+    setWindowFlag(Qt::FramelessWindowHint, true);
+    setMinimumSize(0, 0);
+    const QScreen* mobileScreen = parent ? parent->screen() : QGuiApplication::primaryScreen();
+    if (mobileScreen) {
+        const QSize available = mobileScreen->availableGeometry().size();
+        setMaximumSize(available);
+        resize(available);
+    }
+    setWindowState(windowState() | Qt::WindowFullScreen);
+#else
+    restoreGeometry(QByteArray::fromBase64(APPLICATION->settings()->get("PagedGeometry").toString().toUtf8()));
+#endif''')
+
+# The settings pages have desktop minimum widths and heights. Use a real
+# QScrollArea for the original QStackedLayout, not a clipped view or a fake
+# replacement page. Restrict the sidebar and let the active page scroll.
+patch("launcher/ui/widgets/PageContainer.cpp",
+      '#include <QSortFilterProxyModel>',
+      '''#include <QSortFilterProxyModel>
+#ifdef Q_OS_ANDROID
+#include <QScrollArea>
+#endif''')
+patch("launcher/ui/widgets/PageContainer.cpp",
+      '''    m_layout->addLayout(m_pageStack, 1, 1, 1, 1);
+    m_layout->setColumnStretch(1, 4);''',
+      '''#ifdef Q_OS_ANDROID
+    auto* activePageHost = new QWidget(this);
+    activePageHost->setLayout(m_pageStack);
+    auto* mobileScroll = new QScrollArea(this);
+    mobileScroll->setObjectName(QStringLiteral("androidSettingsScroll"));
+    mobileScroll->setWidgetResizable(true);
+    mobileScroll->setFrameShape(QFrame::NoFrame);
+    mobileScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    mobileScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    mobileScroll->setWidget(activePageHost);
+    m_layout->addWidget(mobileScroll, 1, 1, 1, 1);
+    m_pageList->setMinimumWidth(0);
+    m_pageList->setMaximumWidth(152);
+    m_pageList->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+    m_layout->setColumnStretch(0, 0);
+#else
+    m_layout->addLayout(m_pageStack, 1, 1, 1, 1);
+#endif
+    m_layout->setColumnStretch(1, 4);''')
+
+# The new instance dialog is also modal. Force the same fullscreen dialog
+# presentation on mobile, with a scrollable form and fixed action row.
+patch("launcher/ui/dialogs/NewInstanceDialog.cpp",
+      '''    qInfo() << "PineconeMC Android: scrollable new-instance dialog";''',
+      '''    setWindowFlag(Qt::FramelessWindowHint, true);
+    setWindowState(windowState() | Qt::WindowFullScreen);
+    qInfo() << "PineconeMC Android: fullscreen scrollable new-instance dialog";''')
+
+# The original empty-state overlay is sized for desktop. Reduce its text and
+# make it explicit that an instance must be created before anything can appear.
+patch("launcher/ui/instanceview/InstanceView.cpp",
+      '''        QFont font("sans", 20);
+        font.setBold(true);''',
+      '''#ifdef Q_OS_ANDROID
+        QFont font("sans", 12);
+#else
+        QFont font("sans", 20);
+#endif
+        font.setBold(true);''')
+patch("launcher/ui/instanceview/InstanceView.cpp",
+      '''QStringLiteral("Bem-vindo!\\nToque em Adicionar instância para começar.");''',
+      '''QStringLiteral("Sem instâncias.\\nToque em + Instância para criar uma.");''')
+
 print("Android CMake adjustments applied to actual PineconeMC source.")
