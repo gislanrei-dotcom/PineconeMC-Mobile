@@ -858,6 +858,43 @@ patch("launcher/ui/pages/modplatform/modrinth/ModrinthPage.cpp",
     suggestCurrent();
     triggerSearch();''')
 
+# Individual instance manager (Mods / Version / Log) is also a desktop
+# QMainWindow. Never restore an old monitor-sized rectangle on a phone.
+# Ensure its sidebar, page content and bottom Close/Start actions share a
+# real Android fullscreen window coordinate system.
+patch("launcher/ui/InstanceWindow.cpp",
+      '''    // restore window state
+    {
+        auto base64State = APPLICATION->settings()->get("ConsoleWindowState").toString().toUtf8();
+        restoreState(QByteArray::fromBase64(base64State));
+        auto base64Geometry = APPLICATION->settings()->get("ConsoleWindowGeometry").toString().toUtf8();
+        restoreGeometry(QByteArray::fromBase64(base64Geometry));
+    }''',
+      '''#ifndef Q_OS_ANDROID
+    // Restore desktop sizes only on desktop. Android content must fit the
+    // CURRENT screen, regardless of any previously saved geometry.
+    {
+        auto base64State = APPLICATION->settings()->get("ConsoleWindowState").toString().toUtf8();
+        restoreState(QByteArray::fromBase64(base64State));
+        auto base64Geometry = APPLICATION->settings()->get("ConsoleWindowGeometry").toString().toUtf8();
+        restoreGeometry(QByteArray::fromBase64(base64Geometry));
+    }
+#endif''')
+patch("launcher/ui/InstanceWindow.cpp",
+      '''    show();
+}
+
+void InstanceWindow::on_instanceStatusChanged''',
+      '''#ifdef Q_OS_ANDROID
+    setWindowFlag(Qt::FramelessWindowHint, true);
+    showFullScreen();
+#else
+    show();
+#endif
+}
+
+void InstanceWindow::on_instanceStatusChanged''')
+
 # The original empty-state overlay is sized for desktop. Reduce its text and
 # make it explicit that an instance must be created before anything can appear.
 patch("launcher/ui/instanceview/InstanceView.cpp",
