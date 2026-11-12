@@ -262,7 +262,8 @@ patch("launcher/ui/setupwizard/SetupWizard.cpp",
             return;
         const QSize screenSize = display->availableGeometry().size();
         const int width = qMax(260, screenSize.width() - 16);
-        const int height = qMax(230, screenSize.height() - 16);
+        // Leave generous margin for Android's gesture bar and insets.
+        const int height = qMax(230, screenSize.height() - 96);
         setMaximumSize(width, height);
         resize(qMin(620, width), qMin(660, height));
         qInfo() << "PineconeMC Android wizard size" << size()
@@ -271,6 +272,79 @@ patch("launcher/ui/setupwizard/SetupWizard.cpp",
 #else
     resize(620, 660);
     setMinimumSize(300, 400);
+#endif''')
+
+# Make the language list compact on phones. The desktop QTreeView used almost
+# all of the short landscape screen for a single English row.
+patch("launcher/ui/widgets/LanguageSelectionWidget.cpp",
+      '    languageView->setRootIsDecorated(false);',
+      '''    languageView->setRootIsDecorated(false);
+#ifdef Q_OS_ANDROID
+    // Keep the original language model and scrolling; leave room for actions.
+    languageView->setMinimumHeight(65);
+    languageView->setMaximumHeight(160);
+#endif''')
+
+# Keep working navigation at the TOP of every original wizard page, not below
+# the Android navigation bar. These buttons invoke Qt's actual Next/Back/Finish
+# buttons, preserving upstream validation and settings handling.
+patch("launcher/ui/setupwizard/SetupWizard.cpp",
+      '#include <QDebug>\n#endif',
+      '''#include <QDebug>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QPushButton>
+#endif''')
+patch("launcher/ui/setupwizard/SetupWizard.cpp",
+      '''    auto basePagePtr = getBasePage(id);
+    if (!basePagePtr) {
+        return;
+    }''',
+      '''    auto basePagePtr = getBasePage(id);
+    if (!basePagePtr) {
+        return;
+    }
+#ifdef Q_OS_ANDROID
+    // In a phone's landscape viewport, the desktop QWizard footer can be
+    // below the actual touchscreen. Add native-sized controls to the top of
+    // each original page instead of replacing the wizard or skipping steps.
+    if (auto* pageLayout = qobject_cast<QVBoxLayout*>(basePagePtr->layout())) {
+        if (!basePagePtr->findChild<QWidget*>(
+                QStringLiteral("androidWizardNavigation"),
+                Qt::FindDirectChildrenOnly)) {
+            auto* toolbar = new QWidget(basePagePtr);
+            toolbar->setObjectName(QStringLiteral("androidWizardNavigation"));
+            auto* row = new QHBoxLayout(toolbar);
+            row->setContentsMargins(0, 2, 0, 8);
+            row->setSpacing(12);
+            auto* backButton = new QPushButton(tr("Voltar"), toolbar);
+            auto* forwardButton = new QPushButton(tr("Avançar"), toolbar);
+            backButton->setMinimumHeight(48);
+            forwardButton->setMinimumHeight(48);
+            backButton->setMinimumWidth(120);
+            forwardButton->setMinimumWidth(140);
+            backButton->setEnabled(history().size() > 1);
+            forwardButton->setText(basePagePtr->isFinalPage() ?
+                                   tr("Concluir") : tr("Próximo"));
+            row->addWidget(backButton);
+            row->addStretch();
+            row->addWidget(forwardButton);
+            connect(backButton, &QPushButton::clicked, this, [this]() {
+                auto* original = button(QWizard::BackButton);
+                if (original && original->isEnabled())
+                    original->click();
+            });
+            connect(forwardButton, &QPushButton::clicked, this, [this]() {
+                auto* page = currentPage();
+                auto* original = button(page && page->isFinalPage() ?
+                                        QWizard::FinishButton : QWizard::NextButton);
+                if (original && original->isEnabled())
+                    original->click();
+            });
+            pageLayout->insertWidget(0, toolbar);
+            qInfo() << "PineconeMC Android: visible upper navigation on page" << id;
+        }
+    }
 #endif''')
 
 # Qt Widgets are mouse-oriented on the desktop. Some Android devices show
