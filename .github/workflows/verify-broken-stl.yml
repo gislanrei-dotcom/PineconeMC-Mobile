@@ -1,0 +1,51 @@
+name: Regression test damaged experimental Android libcxx
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-broken-stl.yml'
+      - 'scripts/validate_apk.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  broken-libcxx-reproduction:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: \${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the already-reported broken experimental APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p broken
+          gh run download 43121066310 -R gislanrei-dotcom/PineconeMC-Mobile \
+            -n PineconeMC-EXPERIMENTAL-OPENJDK17-NOT-PLAYABLE \
+            -D broken
+          APK="$(find broken -name '*.apk' -print -quit)"
+          test -s "$APK"
+          python3 - "$APK" <<'PY'
+          import sys, zipfile
+          from pathlib import Path
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              name="lib/arm64-v8a/libc++_shared.so"
+              assert name in z.namelist(), name
+              Path("bad-libcxx.so").write_bytes(z.read(name))
+          PY
+          file bad-libcxx.so
+          readelf -d bad-libcxx.so | grep -E 'HASH|RUNPATH|RPATH|NEEDED' || true
+          readelf -l bad-libcxx.so | grep -A 3 -E 'LOAD|DYNAMIC' | head -60 || true
+          set +e
+          python3 scripts/validate_apk.py "$APK" >validation-result.txt 2>&1
+          VALIDATION_STATUS=$?
+          set -e
+          cat validation-result.txt
+          if test "$VALIDATION_STATUS" -eq 0; then
+            echo 'ERROR: the broken Android APK escaped the new ELF dynamic-hash checks' >&2
+            exit 1
+          fi
+          grep -E 'DT_HASH|DT_GNU_HASH|Android ELF|ELF segment|program header' validation-result.txt
+          echo 'PASS: the Android startup crash candidate is rejected before release.'
