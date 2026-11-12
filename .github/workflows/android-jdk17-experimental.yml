@@ -6,6 +6,8 @@ on:
     paths:
       - '.github/workflows/android-jdk17-experimental.yml'
       - 'research/openjdk17_candidate.py'
+      - 'scripts/**'
+      - 'android/**'
   workflow_dispatch:
 
 # Avoid launching multiple 20-minute native toolchain builds for adjacent commits.
