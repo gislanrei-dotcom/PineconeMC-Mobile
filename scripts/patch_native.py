@@ -289,8 +289,9 @@ patch("launcher/ui/widgets/LanguageSelectionWidget.cpp",
 # the Android navigation bar. These buttons invoke Qt's actual Next/Back/Finish
 # buttons, preserving upstream validation and settings handling.
 patch("launcher/ui/setupwizard/SetupWizard.cpp",
-      '#include <QDebug>\n#endif',
-      '''#include <QDebug>
+      '#include <QAbstractButton>',
+      '''#include <QAbstractButton>
+#ifdef Q_OS_ANDROID
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPushButton>
@@ -323,7 +324,7 @@ patch("launcher/ui/setupwizard/SetupWizard.cpp",
             forwardButton->setMinimumHeight(48);
             backButton->setMinimumWidth(120);
             forwardButton->setMinimumWidth(140);
-            backButton->setEnabled(history().size() > 1);
+            backButton->setEnabled(visitedIds().size() > 1);
             forwardButton->setText(basePagePtr->isFinalPage() ?
                                    tr("Concluir") : tr("Próximo"));
             row->addWidget(backButton);
