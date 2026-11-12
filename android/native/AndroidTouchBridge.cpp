@@ -54,7 +54,13 @@ bool AndroidTouchBridge::eventFilter(QObject* watched, QEvent* event)
     Qt::MouseButton changedButton = Qt::NoButton;
 
     if (type == QEvent::TouchBegin) {
-        m_pressed = receiver;
+        // TouchBegin may be accepted by a parent widget even when the finger
+        // is over a child button or the QTreeView viewport. Find the actual
+        // widget under the finger; otherwise sending mouse events to the
+        // wizard itself never activates "Next" or a language list row.
+        QWidget* hit = m_wizard->childAt(
+            m_wizard->mapFromGlobal(m_lastGlobal.toPoint()));
+        m_pressed = hit ? hit : receiver;
         mouseType = QEvent::MouseButtonPress;
         buttons = Qt::LeftButton;
         changedButton = Qt::LeftButton;
@@ -75,7 +81,10 @@ bool AndroidTouchBridge::eventFilter(QObject* watched, QEvent* event)
     QWidget* target = m_pressed;
     if (!target)
         return false;
-    const QPointF local(target->mapFromGlobal(m_lastGlobal.toPoint()));
+    // A canceled gesture must not trigger the button under the finger.
+    const QPointF local = type == QEvent::TouchCancel
+        ? QPointF(-1000, -1000)
+        : QPointF(target->mapFromGlobal(m_lastGlobal.toPoint()));
     QMouseEvent mouse(mouseType, local, local, m_lastGlobal,
                       changedButton, buttons, Qt::NoModifier,
                       Qt::MouseEventSynthesizedByApplication);
