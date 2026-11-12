@@ -347,6 +347,75 @@ patch("launcher/ui/MainWindow.cpp",
     ui->actionCAT->setVisible(APPLICATION->settings()->get("CatButtonVisible").toBool());
 #endif''')
 
+# On Qt Android, QMainWindow::restoreState() runs AFTER MainWindow's
+# constructor. It may re-hide the main toolbar regardless of the earlier
+# visibility fix. Restore it after the saved desktop state is applied.
+patch("launcher/Application.cpp",
+      '''        m_mainWindow->restoreState(QByteArray::fromBase64(APPLICATION->settings()->get("MainWindowState").toString().toUtf8()));''',
+      '''        m_mainWindow->restoreState(QByteArray::fromBase64(APPLICATION->settings()->get("MainWindowState").toString().toUtf8()));
+#ifdef Q_OS_ANDROID
+        // Desktop window-state snapshots can hide the action toolbar on a
+        // phone, and Qt Android doesn't expose desktop menu-bar controls.
+        if (auto* toolbar = m_mainWindow->findChild<QToolBar*>(QStringLiteral("mainToolBar"))) {
+            toolbar->show();
+        }
+#endif''')
+patch("launcher/Application.cpp",
+      '#include <QWindow>',
+      '''#include <QWindow>
+#ifdef Q_OS_ANDROID
+#include <QToolBar>
+#endif''')
+
+# Create a touch-sized rail INSIDE the actual central widget. It is not a
+# QMainWindow toolbar, so Android's saved window state cannot hide it.
+# The buttons call the original C++ handlers; no fake launcher or web UI.
+patch("launcher/ui/MainWindow.cpp",
+      '#include <QToolButton>',
+      '''#include <QToolButton>
+#ifdef Q_OS_ANDROID
+#include <QVBoxLayout>
+#include <QPushButton>
+#endif''')
+patch("launcher/ui/MainWindow.cpp",
+      '''        ui->horizontalLayout->addWidget(view);
+    }''',
+      '''        ui->horizontalLayout->addWidget(view);
+#ifdef Q_OS_ANDROID
+        // QHBoxLayout already belongs to the original central widget.
+        // Inserting at index zero creates a persistent left control rail
+        // without replacing the original instance list or changing its model.
+        auto* mobileActionRail = new QWidget(ui->centralWidget);
+        mobileActionRail->setObjectName(QStringLiteral("mobileActionRail"));
+        mobileActionRail->setFixedWidth(174);
+        mobileActionRail->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+        auto* mobileActions = new QVBoxLayout(mobileActionRail);
+        mobileActions->setContentsMargins(8, 12, 8, 10);
+        mobileActions->setSpacing(10);
+        auto* addInstance = new QPushButton(QStringLiteral("+ Adicionar instância"), mobileActionRail);
+        addInstance->setObjectName(QStringLiteral("androidAddInstance"));
+        addInstance->setMinimumHeight(54);
+        addInstance->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        addInstance->setToolTip(QStringLiteral("Criar uma instância do Minecraft Java"));
+        mobileActions->addWidget(addInstance);
+        connect(addInstance, &QPushButton::clicked, this,
+                &MainWindow::on_actionAddInstance_triggered);
+        auto* accountButton = new QPushButton(QStringLiteral("Contas"), mobileActionRail);
+        accountButton->setMinimumHeight(46);
+        mobileActions->addWidget(accountButton);
+        connect(accountButton, &QPushButton::clicked, this,
+                &MainWindow::on_actionManageAccounts_triggered);
+        auto* settingsButton = new QPushButton(QStringLiteral("Configurações"), mobileActionRail);
+        settingsButton->setMinimumHeight(46);
+        mobileActions->addWidget(settingsButton);
+        connect(settingsButton, &QPushButton::clicked, this,
+                &MainWindow::on_actionSettings_triggered);
+        mobileActions->addStretch();
+        ui->horizontalLayout->insertWidget(0, mobileActionRail);
+        qInfo() << "PineconeMC Android: central mobile action rail enabled";
+#endif
+    }''')
+
 # Make original empty-state instructions explicitly readable on Android,
 # regardless of whether the upstream Prism translation covers them.
 patch("launcher/ui/instanceview/InstanceView.cpp",
