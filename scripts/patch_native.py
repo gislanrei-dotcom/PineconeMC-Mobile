@@ -33,6 +33,7 @@ patch("launcher/CMakeLists.txt",
       "        QT_ANDROID_TARGET_SDK_VERSION 35\n"
       "        QT_ANDROID_VERSION_CODE 1\n"
       "        QT_ANDROID_PACKAGE_SOURCE_DIR \"${CMAKE_SOURCE_DIR}/../android\"\n"
+      "        QT_ANDROID_EXTRA_LIBS \"${CMAKE_SOURCE_DIR}/../android/libs/arm64-v8a/libcrypto_3.so;${CMAKE_SOURCE_DIR}/../android/libs/arm64-v8a/libssl_3.so\"\n"
       "    )\n"
       "else()\n"
       "    add_executable(${Launcher_Name} MACOSX_BUNDLE WIN32 main.cpp ${LAUNCHER_RCS})\n"
@@ -76,6 +77,32 @@ patch("CMakeLists.txt",
       "elseif(UNIX AND NOT ANDROID)\n")
 
 # Qt 6 on Android does not transitively expose QDebug through QStringList.
+# Qt 6.8.3 on Android doesn't ship OpenSSL 3 automatically. Set the
+# official _3 shared-library suffix before constructing the launcher and
+# log whether the TLS backend can be loaded; no certificate checks are
+# bypassed or weakened.
+patch("launcher/main.cpp",
+      '#include "Application.h"',
+      '''#include "Application.h"
+#ifdef Q_OS_ANDROID
+#include <QSslSocket>
+#include <QDebug>
+#endif''')
+patch("launcher/main.cpp",
+      '''    // initialize Qt
+    Application app(argc, argv);''',
+      '''#ifdef Q_OS_ANDROID
+    // Qt's OpenSSL 3 Android loader searches libssl_3.so / libcrypto_3.so.
+    qputenv("ANDROID_OPENSSL_SUFFIX", "_3");
+#endif
+    // initialize Qt
+    Application app(argc, argv);
+#ifdef Q_OS_ANDROID
+    qInfo() << "PineconeMC Android TLS available:" << QSslSocket::supportsSsl()
+            << "SSL runtime:" << QSslSocket::sslLibraryVersionString()
+            << "SSL build:" << QSslSocket::sslLibraryBuildVersionString();
+#endif''')
+
 # The original inline warning in this header requires QDebug's full definition.
 patch("launcher/java/JavaPerformance.h",
       "#include <QStringList>",
