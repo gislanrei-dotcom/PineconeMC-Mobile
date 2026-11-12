@@ -113,6 +113,11 @@ jobs:
           test -s android/assets/runtime/java-17/lib/modules
           test -s android/assets/runtime/java-17/manifest.tsv
           du -sh android/assets/runtime/java-17 android/libs/arm64-v8a
+          # Preserve ELF PT_LOAD layout of Bionic Java libraries. This is
+          # Qt 6.8.3's official Gradle template plus keepDebugSymbols.
+          cp research/qt-6.8.3-android-build.gradle android/build.gradle
+          grep -F "keepDebugSymbols.add" android/build.gradle
+          sha256sum android/libs/arm64-v8a/libjavajpeg.so > "$RUNNER_TEMP/javajpeg.sha256"
 
       - name: Configure original PineconeMC Qt Android build
         shell: bash
@@ -203,6 +208,18 @@ jobs:
             --out "$APK" "$ALIGNED_APK"
           "$TOOLS/apksigner" verify --verbose --min-sdk-version 28 "$APK"
           python3 scripts/validate_apk.py "$APK"
+          # Prove Gradle didn't replace/strip a Java library whose
+          # PT_LOAD alignment has already been verified.
+          python3 - "$APK" android/libs/arm64-v8a/libjavajpeg.so <<'PY'
+          import hashlib, pathlib, sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as package:
+              actual = package.read("lib/arm64-v8a/libjavajpeg.so")
+          expected = pathlib.Path(sys.argv[2]).read_bytes()
+          assert hashlib.sha256(actual).digest() == hashlib.sha256(expected).digest(), (
+              "Gradle modified libjavajpeg.so after ELF validation"
+          )
+          print("OpenJDK JPEG native library remained byte-for-byte unchanged.")
+          PY
           # Ensure the exact unmodified NDK STL, not Termux's repackaged
           # version, is the one actually present in the finished APK.
           python3 - "$APK" "${ANDROID_HOME}/ndk/26.1.10909125/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so" <<'PY'
