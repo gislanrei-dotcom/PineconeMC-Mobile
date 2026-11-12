@@ -121,6 +121,16 @@ jobs:
           grep -F "keepDebugSymbols.add" android/build.gradle
           sha256sum android/libs/arm64-v8a/libjavajpeg.so > "$RUNNER_TEMP/javajpeg.sha256"
 
+      - name: Bundle Brazilian Portuguese (pt-BR) for offline use
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get -o Acquire::Retries=4 install -y qt6-l10n-tools
+          python3 -m py_compile scripts/prepare_ptbr.py
+          python3 scripts/prepare_ptbr.py
+          test -s android/assets/translations/mmc_pt_BR.qm
+          test -s android/assets/translations/index_v2.json
+
       - name: Configure original PineconeMC Qt Android build
         shell: bash
         run: |
