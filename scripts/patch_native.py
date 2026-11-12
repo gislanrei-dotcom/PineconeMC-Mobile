@@ -244,6 +244,39 @@ patch("launcher/minecraft/launch/LauncherPartLaunch.cpp",
     m_process.setProcessEnvironment(instance->createLaunchEnvironment());
 #endif""")
 
+# The desktop wizard requests 620x660 logical pixels. On a landscape
+# phone the available height can be ~400 logical pixels, so the entire
+# footer (Next / Finish) is rendered offscreen. Bound the wizard to the
+# ACTUAL Android viewport after it has been shown and laid out.
+patch("launcher/ui/setupwizard/SetupWizard.cpp",
+      '    resize(620, 660);\n    setMinimumSize(300, 400);',
+      '''#ifdef Q_OS_ANDROID
+    setMinimumSize(0, 0);
+    // Defer until Android has attached the window to the landscape screen.
+    // Qt screen coordinates are device-independent pixels, not screenshot px.
+    QTimer::singleShot(0, this, [this]() {
+        QScreen* display = this->screen();
+        if (!display)
+            display = QGuiApplication::primaryScreen();
+        if (!display)
+            return;
+        const QSize screenSize = display->availableGeometry().size();
+        const int width = qMax(260, screenSize.width() - 16);
+        const int height = qMax(230, screenSize.height() - 16);
+        setMaximumSize(width, height);
+        resize(qMin(620, width), qMin(660, height));
+        qInfo() << "PineconeMC Android wizard size" << size()
+                << "available landscape area" << screenSize;
+    });
+#else
+    resize(620, 660);
+    setMinimumSize(300, 400);
+#endif''')
+
+patch("launcher/ui/setupwizard/SetupWizard.cpp",
+      '#include "AndroidTouchBridge.h"\n#include <QTimer>',
+      '#include "AndroidTouchBridge.h"\n#include <QTimer>\n#include <QScreen>\n#include <QGuiApplication>\n#include <QDebug>')
+
 # Qt Widgets are mouse-oriented on the desktop. Some Android devices show
 # the initial language wizard but don't synthesize widget clicks from touch.
 # Scope the explicit adapter to the ORIGINAL setup wizard, including its list
