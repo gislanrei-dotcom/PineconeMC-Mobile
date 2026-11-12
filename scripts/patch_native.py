@@ -774,45 +774,37 @@ patch("launcher/ui/pagedialog/PageDialog.cpp",
     restoreGeometry(QByteArray::fromBase64(APPLICATION->settings()->get("PagedGeometry").toString().toUtf8()));
 #endif''')
 
-# The settings pages have desktop minimum widths and heights. Use a real
-# QScrollArea for the original QStackedLayout, not a clipped view or a fake
-# replacement page. Restrict the sidebar and let the active page scroll.
+# The nested QScrollArea used in earlier builds changed the widget tree
+# and caused clicks in the instance manager to land on adjacent rows.
+# Restore upstream PageContainer stack/layout (a single coordinate system),
+# enlarge sidebar hit targets and use Qt's native touch scroller on the LIST.
 patch("launcher/ui/widgets/PageContainer.cpp",
       '#include <QSortFilterProxyModel>',
       '''#include <QSortFilterProxyModel>
 #ifdef Q_OS_ANDROID
-#include <QScrollArea>
+#include <QScroller>
 #endif''')
 patch("launcher/ui/widgets/PageContainer.cpp",
-      '''    m_layout->addLayout(m_pageStack, 1, 1, 1, 1);
-    m_layout->setColumnStretch(1, 4);''',
+      '''    m_pageList->setIconSize(QSize(pageIconSize, pageIconSize));''',
       '''#ifdef Q_OS_ANDROID
-    // The New Instance dialog already has scrollable Minecraft/version/mod
-    // views. Reparenting its QStackedLayout into a QScrollArea resulted in a
-    // completely blank central page on some mobile window managers. Keep its
-    // upstream page stack intact; only settings need a separate scroll host.
-    if (parentWidget() && parentWidget()->inherits("NewInstanceDialog")) {
-        m_layout->addLayout(m_pageStack, 1, 1, 1, 1);
-    } else {
-        auto* activePageHost = new QWidget(this);
-        activePageHost->setLayout(m_pageStack);
-        auto* mobileScroll = new QScrollArea(this);
-        mobileScroll->setObjectName(QStringLiteral("androidSettingsScroll"));
-        mobileScroll->setWidgetResizable(true);
-        mobileScroll->setFrameShape(QFrame::NoFrame);
-        mobileScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-        mobileScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-        mobileScroll->setWidget(activePageHost);
-        m_layout->addWidget(mobileScroll, 1, 1, 1, 1);
-    }
-    m_pageList->setMinimumWidth(0);
-    m_pageList->setMaximumWidth(152);
+    m_pageList->setIconSize(QSize(22, 22));
+    m_pageList->setMinimumWidth(135);
+    m_pageList->setMaximumWidth(156);
     m_pageList->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
-    m_layout->setColumnStretch(0, 0);
+    m_pageList->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+    QScroller::grabGesture(m_pageList->viewport(), QScroller::TouchGesture);
 #else
-    m_layout->addLayout(m_pageStack, 1, 1, 1, 1);
-#endif
-    m_layout->setColumnStretch(1, 4);''')
+    m_pageList->setIconSize(QSize(pageIconSize, pageIconSize));
+#endif''')
+patch("launcher/ui/widgets/PageContainer_p.h",
+      '''        size.setHeight(qMax(size.height(), 32));''',
+      '''#ifdef Q_OS_ANDROID
+        // Visually and interactively identical 48-dip rows: prevent a finger
+        // near one label from selecting the following option.
+        size.setHeight(qMax(size.height(), 48));
+#else
+        size.setHeight(qMax(size.height(), 32));
+#endif''')
 
 # Fullscreen mobile dialog retains the real bottom buttons, with no extra
 # headers or nested reparented scrolling containers.
