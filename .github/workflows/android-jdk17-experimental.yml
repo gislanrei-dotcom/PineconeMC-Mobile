@@ -140,6 +140,14 @@ jobs:
           test -s android/assets/bootstrap-meta/index.json
           test -s android/assets/bootstrap-meta/net.minecraft/index.json
 
+      - name: Package pinned OpenSSL 3 for Qt Android HTTPS (Modrinth and Minecraft)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          bash scripts/prepare_android_openssl.sh
+          test -s android/libs/arm64-v8a/libcrypto_3.so
+          test -s android/libs/arm64-v8a/libssl_3.so
+
       - name: Configure original PineconeMC Qt Android build
         shell: bash
         run: |
@@ -229,6 +237,17 @@ jobs:
             --out "$APK" "$ALIGNED_APK"
           "$TOOLS/apksigner" verify --verbose --min-sdk-version 28 "$APK"
           python3 scripts/validate_apk.py "$APK"
+          python3 - "$APK" <<'PYTLS'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as apk:
+              names = set(apk.namelist())
+              for library in ("libcrypto_3.so", "libssl_3.so"):
+                  name = "lib/arm64-v8a/" + library
+                  assert name in names and apk.getinfo(name).file_size > 100_000, name
+              tls_backends = [name for name in names if "qopensslbackend" in name]
+              assert tls_backends, "OpenSSL TLS Qt backend missing from APK"
+              print("Qt TLS backend and both OpenSSL 3 ARM64 libs packaged:", tls_backends)
+          PYTLS
           # Prove Gradle didn't replace/strip a Java library whose
           # PT_LOAD alignment has already been verified.
           python3 - "$APK" android/libs/arm64-v8a/libjavajpeg.so <<'PY'
