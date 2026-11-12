@@ -208,13 +208,31 @@ patch("launcher/launch/steps/CheckJava.cpp",
       """void CheckJava::executeTask()
 {
 #ifdef Q_OS_ANDROID
+    // Desktop FS::ResolveExecutable and QStandardPaths::findExecutable are
+    // not valid detection paths for an APK-packed JNI Java subprocess.
+    // The original desktop check reported Java binary "" missing even when
+    // libpinecone_java.so was successfully packed in nativeLibraryDir.
     const auto runtime = AndroidRuntime::inspect();
     if (!runtime.available()) {
         emit logLine(runtime.error, MessageLevel::Fatal);
         emitFailed(runtime.error);
         return;
     }
-    m_parent->instance()->settings()->set("JavaPath", runtime.javaExecutable);
+    const auto instance = m_parent->instance();
+    const auto settings = instance->settings();
+    settings->set("JavaPath", runtime.javaExecutable);
+    settings->set("JavaVersion", QStringLiteral("17"));
+    settings->set("JavaArchitecture", QStringLiteral("arm64"));
+    settings->set("JavaRealArchitecture", QStringLiteral("aarch64"));
+    settings->set("JavaVendor", QStringLiteral("OpenJDK Android experimental"));
+    emit logLine(QStringLiteral(
+       "Java 17 ARM64 empacotado encontrado: %1. "
+       "Iniciando verificação real da JVM na execução; "
+       "Minecraft ainda depende de bibliotecas gráficas Android.")
+       .arg(runtime.javaExecutable), MessageLevel::Launcher);
+    instance->updateRuntimeContext();
+    emitSucceeded();
+    return;
 #endif""")
 
 # Optional separate OpenJDK process adapter based on JNI Invocation API.
