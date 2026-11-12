@@ -425,78 +425,69 @@ patch("launcher/Application.cpp",
 #include <QToolBar>
 #endif''')
 
-# Create a touch-sized rail INSIDE the actual central widget. It is not a
-# QMainWindow toolbar, so Android's saved window state cannot hide it.
-# The buttons call the original C++ handlers; no fake launcher or web UI.
+# Android home screen: the user requested the four primary controls at the
+# BOTTOM, not in a permanent left-side desktop panel. Use the existing
+# InstanceView in a vertical workspace so instances are always above buttons.
+# These are the original actions; all features continue to use Pinecone C++.
 patch("launcher/ui/MainWindow.cpp",
       '#include <QToolButton>',
       '''#include <QToolButton>
 #ifdef Q_OS_ANDROID
 #include <QVBoxLayout>
+#include <QHBoxLayout>
 #include <QPushButton>
 #endif''')
 patch("launcher/ui/MainWindow.cpp",
       '''        ui->horizontalLayout->addWidget(view);
     }''',
       '''#ifdef Q_OS_ANDROID
-        // Respect the native Android top title inset for the instance grid,
-        // not just the left controls. Otherwise the first instance is hidden.
-        auto* instancePanel = new QWidget(ui->centralWidget);
-        auto* instanceLayout = new QVBoxLayout(instancePanel);
-        instanceLayout->setContentsMargins(0, 0, 0, 0);
-        instanceLayout->setSpacing(0);
-        instanceLayout->addWidget(view);
-        ui->horizontalLayout->addWidget(instancePanel, 1);
-#else
-        ui->horizontalLayout->addWidget(view);
-#endif
-#ifdef Q_OS_ANDROID
-        // QHBoxLayout already belongs to the original central widget.
-        // Inserting at index zero creates a persistent left control rail
-        // without replacing the original instance list or changing its model.
-        auto* mobileActionRail = new QWidget(ui->centralWidget);
-        mobileActionRail->setObjectName(QStringLiteral("mobileActionRail"));
-        mobileActionRail->setFixedWidth(146);
-        mobileActionRail->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
-        auto* mobileActions = new QVBoxLayout(mobileActionRail);
-        // Qt for Android reserves a native title/status inset above the Qt
-        // content; keep the FIRST action below that area.
-        mobileActions->setContentsMargins(6, 6, 6, 6);
-        mobileActions->setSpacing(6);
-        auto* addInstance = new QPushButton(QStringLiteral("+ Instância"), mobileActionRail);
+        auto* mobileWorkspace = new QWidget(ui->centralWidget);
+        mobileWorkspace->setObjectName(QStringLiteral("mobileWorkspace"));
+        auto* mobileColumn = new QVBoxLayout(mobileWorkspace);
+        mobileColumn->setContentsMargins(4, 2, 4, 4);
+        mobileColumn->setSpacing(4);
+
+        // Keep the actual PineconeMC instance view, including its full model.
+        view->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        mobileColumn->addWidget(view, 1);
+
+        auto* mobileBottomBar = new QWidget(mobileWorkspace);
+        mobileBottomBar->setObjectName(QStringLiteral("mobileBottomBar"));
+        auto* actions = new QHBoxLayout(mobileBottomBar);
+        actions->setContentsMargins(2, 2, 2, 2);
+        actions->setSpacing(5);
+        auto* addInstance = new QPushButton(QStringLiteral("+ Instância"), mobileBottomBar);
         addInstance->setObjectName(QStringLiteral("androidAddInstance"));
-        addInstance->setMinimumHeight(46);
-        addInstance->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        addInstance->setToolTip(QStringLiteral("Criar uma instância do Minecraft Java"));
-        mobileActions->addWidget(addInstance);
+        auto* playButton = new QPushButton(QStringLiteral("Jogar"), mobileBottomBar);
+        playButton->setObjectName(QStringLiteral("androidLaunchInstance"));
+        auto* accountButton = new QPushButton(QStringLiteral("Contas"), mobileBottomBar);
+        auto* settingsButton = new QPushButton(QStringLiteral("Configurações"), mobileBottomBar);
+        for (QPushButton* button : {addInstance, playButton, accountButton, settingsButton}) {
+            button->setMinimumHeight(48);
+            button->setMinimumWidth(0);
+            button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+            actions->addWidget(button, 1);
+        }
         connect(addInstance, &QPushButton::clicked, this,
                 &MainWindow::on_actionAddInstance_triggered);
-        // Real game launch remains disabled until an instance is selected;
-        // mirror the upstream QAction state rather than bypassing checks.
-        auto* playButton = new QPushButton(QStringLiteral("Jogar"), mobileActionRail);
-        playButton->setObjectName(QStringLiteral("androidLaunchInstance"));
-        playButton->setMinimumHeight(46);
-        playButton->setEnabled(ui->actionLaunchInstance->isEnabled());
-        mobileActions->addWidget(playButton);
         connect(playButton, &QPushButton::clicked, this,
                 &MainWindow::on_actionLaunchInstance_triggered);
+        playButton->setEnabled(ui->actionLaunchInstance->isEnabled());
         connect(ui->actionLaunchInstance, &QAction::changed, playButton,
                 [this, playButton]() {
                     playButton->setEnabled(ui->actionLaunchInstance->isEnabled());
                 });
-        auto* accountButton = new QPushButton(QStringLiteral("Contas"), mobileActionRail);
-        accountButton->setMinimumHeight(46);
-        mobileActions->addWidget(accountButton);
         connect(accountButton, &QPushButton::clicked, this,
                 &MainWindow::on_actionManageAccounts_triggered);
-        auto* settingsButton = new QPushButton(QStringLiteral("Configurações"), mobileActionRail);
-        settingsButton->setMinimumHeight(46);
-        mobileActions->addWidget(settingsButton);
         connect(settingsButton, &QPushButton::clicked, this,
                 &MainWindow::on_actionSettings_triggered);
-        mobileActions->addStretch();
-        ui->horizontalLayout->insertWidget(0, mobileActionRail);
-        qInfo() << "PineconeMC Android: central mobile action rail enabled";
+        mobileColumn->addWidget(mobileBottomBar, 0);
+        ui->horizontalLayout->setContentsMargins(0, 0, 0, 0);
+        ui->horizontalLayout->setSpacing(0);
+        ui->horizontalLayout->addWidget(mobileWorkspace, 1);
+        qInfo() << "PineconeMC Android: four touch controls at bottom, instance list above";
+#else
+        ui->horizontalLayout->addWidget(view);
 #endif
     }''')
 
