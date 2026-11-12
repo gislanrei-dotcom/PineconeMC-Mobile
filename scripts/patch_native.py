@@ -400,6 +400,19 @@ patch("launcher/ui/MainWindow.cpp",
         mobileActions->addWidget(addInstance);
         connect(addInstance, &QPushButton::clicked, this,
                 &MainWindow::on_actionAddInstance_triggered);
+        // Real game launch remains disabled until an instance is selected;
+        // mirror the upstream QAction state rather than bypassing checks.
+        auto* playButton = new QPushButton(QStringLiteral("Jogar"), mobileActionRail);
+        playButton->setObjectName(QStringLiteral("androidLaunchInstance"));
+        playButton->setMinimumHeight(46);
+        playButton->setEnabled(ui->actionLaunchInstance->isEnabled());
+        mobileActions->addWidget(playButton);
+        connect(playButton, &QPushButton::clicked, this,
+                &MainWindow::on_actionLaunchInstance_triggered);
+        connect(ui->actionLaunchInstance, &QAction::changed, playButton,
+                [this, playButton]() {
+                    playButton->setEnabled(ui->actionLaunchInstance->isEnabled());
+                });
         auto* accountButton = new QPushButton(QStringLiteral("Contas"), mobileActionRail);
         accountButton->setMinimumHeight(46);
         mobileActions->addWidget(accountButton);
