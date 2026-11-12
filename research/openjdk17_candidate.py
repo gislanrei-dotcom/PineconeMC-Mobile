@@ -81,7 +81,11 @@ def main():
         stored[name] = orig_hash
         dest = libs / name
         shutil.copyfile(original, dest)
-        subprocess.run(["patchelf", "--set-rpath", "$ORIGIN", str(dest)], check=True)
+        # Deliberately keep upstream DT_RUNPATH unchanged. Rewriting RPATH
+        # with patchelf can create misaligned Android PT_LOAD segments, causing
+        # dlopen() failures despite presence of GNU/SysV hash tables.
+        # APK nativeLibraryDir is the lookup path for DT_NEEDED dependencies.
+        # We only edit libraries when a versioned DT_NEEDED demands it.
 
     with tempfile.TemporaryDirectory() as temp_path:
         temp = Path(temp_path)
@@ -165,6 +169,30 @@ def main():
                     subprocess.run(["patchelf", "--replace-needed", original,
                                     replacement, str(lib)], check=True)
 
+        # Check PT_LOAD congruence on every candidate ELF (not just its
+        # dynamic hash table). The 16KB-capable Android linker rejects
+        # misaligned segments even when readelf -d prints GNU_HASH.
+        def valid_load_alignment(binary):
+            with open(binary, "rb") as source:
+                header = source.read(64)
+                phoff = struct.unpack_from("<Q", header, 32)[0]
+                entsize, count = struct.unpack_from("<HH", header, 54)
+                source.seek(phoff)
+                phdrs = source.read(entsize * count)
+            if entsize < 56 or len(phdrs) != entsize * count:
+                raise RuntimeError("Missing ELF program headers: " + str(binary))
+            for index in range(count):
+                at = index * entsize
+                if struct.unpack_from("<I", phdrs, at)[0] != 1:
+                    continue
+                offset = struct.unpack_from("<Q", phdrs, at + 8)[0]
+                vaddr = struct.unpack_from("<Q", phdrs, at + 16)[0]
+                align = struct.unpack_from("<Q", phdrs, at + 48)[0]
+                if (offset - vaddr) % 4096 or (align > 1 and (offset - vaddr) % align):
+                    raise RuntimeError("Invalid Android PT_LOAD alignment in " + str(binary))
+        for binary in sorted(libs.glob("*.so")):
+            valid_load_alignment(binary)
+
         needed = set()
         for lib in libs.glob("*.so"):
             result = subprocess.run(["patchelf", "--print-needed", str(lib)],
@@ -181,8 +209,8 @@ def main():
             f"Runtime assets: {len(manifest)}",
             f"Native ELF libraries: {len(stored)}",
             f"Java modules bytes: {(assets / 'lib/modules').stat().st_size}",
-            "Native libraries rewritten with $ORIGIN runpath; remaining absolute Termux",
-            "prefix strings or JDK defaults are NOT fixed by this transformation.",
+            "Unmodified Termux DT_RUNPATH may still contain absolute prefix",
+            "paths. Android nativeLibraryDir dependency lookup remains untested.",
             "Missing ELF dependencies: " + ", ".join(missing or ["none"]),
             "Unresolved symlinks: " + "; ".join(skipped or ["none"]),
             "Java startup, HTTPS, JVM relocation and Minecraft gameplay UNTESTED.",

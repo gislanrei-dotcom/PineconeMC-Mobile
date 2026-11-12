@@ -42,6 +42,15 @@ def valid_dynamic_hash(blob, path):
         if p_offset + p_filesz > len(blob):
             fail("ELF segment exceeds file bounds: " + path)
         if p_type == 1:
+            p_align = struct.unpack_from("<Q", blob, off + 48)[0]
+            # ELF ABI requires virtual address and file offset congruence
+            # modulo p_align. Android's linker also maps ELF by system pages.
+            # Some patchelf-altered Termux .so files violate this despite
+            # readelf reporting a DT_HASH/DT_GNU_HASH entry.
+            if (p_offset - p_vaddr) % 4096 != 0:
+                fail("Android ELF PT_LOAD 4K page alignment invalid: " + path)
+            if p_align > 1 and (p_offset - p_vaddr) % p_align != 0:
+                fail("Android ELF PT_LOAD p_align congruence invalid: " + path)
             loads.append((p_vaddr, p_vaddr + p_filesz, p_offset))
         elif p_type == 2:
             dynamics.append((p_offset, p_filesz))
