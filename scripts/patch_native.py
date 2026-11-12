@@ -273,6 +273,90 @@ patch("launcher/Application.cpp",
 #endif
     bool languageRequired = settings()->get("Language").toString().isEmpty();''')
 
+
+# Preinstall the official-derived Brazilian Portuguese Qt catalog in the
+# application's real translations directory BEFORE TranslationsModel starts.
+# Without an index file, upstream reloadLocalFiles() returns early and shows
+# only American English. Both assets are produced by prepare_ptbr.py.
+patch("launcher/Application.cpp",
+      '        m_translations.reset(new TranslationsModel("translations"));',
+      '''#ifdef Q_OS_ANDROID
+        QDir().mkpath(QStringLiteral("translations"));
+        for (const QString& name : {QStringLiteral("mmc_pt_BR.qm"),
+                                    QStringLiteral("index_v2.json")}) {
+            QFile source(QStringLiteral("assets:/translations/") + name);
+            if (!source.open(QIODevice::ReadOnly)) {
+                qWarning() << "PineconeMC Android: missing bundled pt_BR asset" << name;
+                continue;
+            }
+            const QByteArray content = source.readAll();
+            const QString destination = QStringLiteral("translations/") + name;
+            QFile installed(destination);
+            if (installed.open(QIODevice::ReadOnly) && installed.readAll() == content)
+                continue;
+            QSaveFile target(destination);
+            if (!target.open(QIODevice::WriteOnly) ||
+                target.write(content) != content.size() || !target.commit()) {
+                qWarning() << "PineconeMC Android: cannot write pt_BR translation" << destination;
+            }
+        }
+        // Existing test APKs saved en_US when it was the only available row.
+        const QString saved = settings()->get("Language").toString();
+        if (saved.isEmpty() || saved == QStringLiteral("en_US"))
+            settings()->set("Language", QStringLiteral("pt_BR"));
+#endif
+        m_translations.reset(new TranslationsModel("translations"));
+#ifdef Q_OS_ANDROID
+        if (!m_translations->selectLanguage(settings()->get("Language").toString()))
+            qWarning() << "PineconeMC Android: pt_BR catalog not yet loaded";
+        else
+            qInfo() << "PineconeMC Android: built-in Brazilian Portuguese catalog active";
+#endif''')
+
+# Fix the original desktop toolbar disappearing in Android: a desktop setting
+# ("MenuBarInsteadOfToolBar") hides the only Add Instance action, while Qt's
+# mobile activity does not expose the desktop menu bar.
+patch("launcher/ui/MainWindow.cpp",
+      '''    ui->menuBar->setVisible(APPLICATION->settings()->get("MenuBarInsteadOfToolBar").toBool());
+    ui->mainToolBar->setVisible(ui->menuBar->isNativeMenuBar() || !APPLICATION->settings()->get("MenuBarInsteadOfToolBar").toBool());
+    ui->actionCAT->setVisible(APPLICATION->settings()->get("CatButtonVisible").toBool());''',
+      '''#ifdef Q_OS_ANDROID
+    ui->menuBar->setVisible(false);
+    ui->mainToolBar->setVisible(true);
+    ui->mainToolBar->setMovable(false);
+    ui->mainToolBar->setFloatable(false);
+    ui->mainToolBar->setIconSize(QSize(22, 22));
+    ui->mainToolBar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    ui->mainToolBar->setMinimumHeight(46);
+    ui->instanceToolBar->setVisible(false);
+    ui->newsToolBar->setVisible(false);
+    // Keep touch-sized original actions; they trigger the REAL C++ handlers.
+    ui->actionAddInstance->setText(QStringLiteral("Adicionar instância"));
+    ui->actionSettings->setText(QStringLiteral("Configurações"));
+    ui->actionFoldersButton->setText(QStringLiteral("Pastas"));
+    ui->actionAccountsButton->setText(QStringLiteral("Contas"));
+    ui->actionHelpButton->setText(QStringLiteral("Ajuda"));
+    for (QAction* action : ui->mainToolBar->actions()) {
+        if (auto* control = qobject_cast<QToolButton*>(ui->mainToolBar->widgetForAction(action)))
+            control->setMinimumHeight(42);
+    }
+    ui->actionCAT->setVisible(false);
+#else
+    ui->menuBar->setVisible(APPLICATION->settings()->get("MenuBarInsteadOfToolBar").toBool());
+    ui->mainToolBar->setVisible(ui->menuBar->isNativeMenuBar() || !APPLICATION->settings()->get("MenuBarInsteadOfToolBar").toBool());
+    ui->actionCAT->setVisible(APPLICATION->settings()->get("CatButtonVisible").toBool());
+#endif''')
+
+# Make original empty-state instructions explicitly readable on Android,
+# regardless of whether the upstream Prism translation covers them.
+patch("launcher/ui/instanceview/InstanceView.cpp",
+      '        QString emptyString = tr("Welcome!") + "\\n" + tr("Click \\"Add Instance\\" to get started.");',
+      '''#ifdef Q_OS_ANDROID
+        QString emptyString = QStringLiteral("Bem-vindo!\\nToque em Adicionar instância para começar.");
+#else
+        QString emptyString = tr("Welcome!") + "\\n" + tr("Click \\"Add Instance\\" to get started.");
+#endif''')
+
 # The desktop wizard requests 620x660 logical pixels. On a landscape
 # phone the available height can be ~400 logical pixels, so the entire
 # footer (Next / Finish) is rendered offscreen. Bound the wizard to the
