@@ -163,7 +163,8 @@ patch("launcher/CMakeLists.txt",
       """target_include_directories(Launcher_logic PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 if(ANDROID)
     target_sources(Launcher_logic PRIVATE
-        "${CMAKE_SOURCE_DIR}/../android/native/AndroidRuntime.cpp")
+        "${CMAKE_SOURCE_DIR}/../android/native/AndroidRuntime.cpp"
+        "${CMAKE_SOURCE_DIR}/../android/native/AndroidTouchBridge.cpp")
     target_include_directories(Launcher_logic PRIVATE
         "${CMAKE_SOURCE_DIR}/../android/native")
 endif()""")
@@ -242,5 +243,29 @@ patch("launcher/minecraft/launch/LauncherPartLaunch.cpp",
 #else
     m_process.setProcessEnvironment(instance->createLaunchEnvironment());
 #endif""")
+
+# Qt Widgets are mouse-oriented on the desktop. Some Android devices show
+# the initial language wizard but don't synthesize widget clicks from touch.
+# Scope the explicit adapter to the ORIGINAL setup wizard, including its list
+# viewport and navigation buttons, so normal launcher code remains untouched.
+patch("launcher/ui/setupwizard/SetupWizard.cpp",
+      '#include "SetupWizard.h"',
+      '''#include "SetupWizard.h"
+#ifdef Q_OS_ANDROID
+#include "AndroidTouchBridge.h"
+#include <QTimer>
+#endif''')
+patch("launcher/ui/setupwizard/SetupWizard.cpp",
+      '    setObjectName(QStringLiteral("SetupWizard"));',
+      '''    setObjectName(QStringLiteral("SetupWizard"));
+#ifdef Q_OS_ANDROID
+    auto* touchBridge = new AndroidTouchBridge(this);
+    // Pages and buttons are added after constructing the QWizard; defer the
+    // initial scan until the Qt event loop and repeat after navigation.
+    QTimer::singleShot(0, touchBridge, [touchBridge]() { touchBridge->activate(); });
+    connect(this, &QWizard::currentIdChanged, touchBridge, [touchBridge](int) {
+        QTimer::singleShot(0, touchBridge, [touchBridge]() { touchBridge->activate(); });
+    });
+#endif''')
 
 print("Android CMake adjustments applied to actual PineconeMC source.")
