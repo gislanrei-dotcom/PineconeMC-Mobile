@@ -273,10 +273,6 @@ patch("launcher/ui/setupwizard/SetupWizard.cpp",
     setMinimumSize(300, 400);
 #endif''')
 
-patch("launcher/ui/setupwizard/SetupWizard.cpp",
-      '#include "AndroidTouchBridge.h"\n#include <QTimer>',
-      '#include "AndroidTouchBridge.h"\n#include <QTimer>\n#include <QScreen>\n#include <QGuiApplication>\n#include <QDebug>')
-
 # Qt Widgets are mouse-oriented on the desktop. Some Android devices show
 # the initial language wizard but don't synthesize widget clicks from touch.
 # Scope the explicit adapter to the ORIGINAL setup wizard, including its list
@@ -287,6 +283,9 @@ patch("launcher/ui/setupwizard/SetupWizard.cpp",
 #ifdef Q_OS_ANDROID
 #include "AndroidTouchBridge.h"
 #include <QTimer>
+#include <QScreen>
+#include <QGuiApplication>
+#include <QDebug>
 #endif''')
 patch("launcher/ui/setupwizard/SetupWizard.cpp",
       '    setObjectName(QStringLiteral("SetupWizard"));',
