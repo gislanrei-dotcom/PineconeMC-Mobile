@@ -796,16 +796,24 @@ patch("launcher/ui/widgets/PageContainer.cpp",
       '''    m_layout->addLayout(m_pageStack, 1, 1, 1, 1);
     m_layout->setColumnStretch(1, 4);''',
       '''#ifdef Q_OS_ANDROID
-    auto* activePageHost = new QWidget(this);
-    activePageHost->setLayout(m_pageStack);
-    auto* mobileScroll = new QScrollArea(this);
-    mobileScroll->setObjectName(QStringLiteral("androidSettingsScroll"));
-    mobileScroll->setWidgetResizable(true);
-    mobileScroll->setFrameShape(QFrame::NoFrame);
-    mobileScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    mobileScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    mobileScroll->setWidget(activePageHost);
-    m_layout->addWidget(mobileScroll, 1, 1, 1, 1);
+    // The New Instance dialog already has scrollable Minecraft/version/mod
+    // views. Reparenting its QStackedLayout into a QScrollArea resulted in a
+    // completely blank central page on some mobile window managers. Keep its
+    // upstream page stack intact; only settings need a separate scroll host.
+    if (parentWidget() && parentWidget()->inherits("NewInstanceDialog")) {
+        m_layout->addLayout(m_pageStack, 1, 1, 1, 1);
+    } else {
+        auto* activePageHost = new QWidget(this);
+        activePageHost->setLayout(m_pageStack);
+        auto* mobileScroll = new QScrollArea(this);
+        mobileScroll->setObjectName(QStringLiteral("androidSettingsScroll"));
+        mobileScroll->setWidgetResizable(true);
+        mobileScroll->setFrameShape(QFrame::NoFrame);
+        mobileScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+        mobileScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+        mobileScroll->setWidget(activePageHost);
+        m_layout->addWidget(mobileScroll, 1, 1, 1, 1);
+    }
     m_pageList->setMinimumWidth(0);
     m_pageList->setMaximumWidth(152);
     m_pageList->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
