@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Qt Widgets launcher on Android: no desktop-style title/action bar.
+         Android 16 landscape has very little vertical space; Qt itself owns
+         navigation inside the app, not the system ActionBar. -->
+    <style name="PineconeMobileTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:colorAccent">#6299D4</item>
+        <item name="android:windowBackground">#1b1d22</item>
+    </style>
+</resources>
