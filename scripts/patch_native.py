@@ -823,6 +823,32 @@ patch("launcher/ui/dialogs/NewInstanceDialog.cpp",
     setWindowState(windowState() | Qt::WindowFullScreen);
     qInfo() << "PineconeMC Android: fullscreen original instance form";''')
 
+# ModrinthPage eagerly starts a request for categories from its constructor,
+# even if "Minecraft" (the first vanilla page) is selected. On Android a
+# missing TLS backend consequently displayed a blocking retry dialog before
+# the user selected any modpack provider. Defer that request until Modrinth
+# is actually opened; failures then remain scoped to that provider.
+patch("launcher/ui/pages/modplatform/modrinth/ModrinthPage.cpp",
+      '''    m_categoriesTask->start();
+}''',
+      '''#ifndef Q_OS_ANDROID
+    m_categoriesTask->start();
+#endif
+}''')
+patch("launcher/ui/pages/modplatform/modrinth/ModrinthPage.cpp",
+      '''    BasePage::openedImpl();
+    suggestCurrent();
+    triggerSearch();''',
+      '''    BasePage::openedImpl();
+#ifdef Q_OS_ANDROID
+    if (m_categoriesTask && !property("androidCategoriesRequested").toBool()) {
+        setProperty("androidCategoriesRequested", true);
+        m_categoriesTask->start();
+    }
+#endif
+    suggestCurrent();
+    triggerSearch();''')
+
 # The original empty-state overlay is sized for desktop. Reduce its text and
 # make it explicit that an instance must be created before anything can appear.
 patch("launcher/ui/instanceview/InstanceView.cpp",
