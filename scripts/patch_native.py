@@ -380,7 +380,18 @@ patch("launcher/ui/MainWindow.cpp",
 patch("launcher/ui/MainWindow.cpp",
       '''        ui->horizontalLayout->addWidget(view);
     }''',
-      '''        ui->horizontalLayout->addWidget(view);
+      '''#ifdef Q_OS_ANDROID
+        // Respect the native Android top title inset for the instance grid,
+        // not just the left controls. Otherwise the first instance is hidden.
+        auto* instancePanel = new QWidget(ui->centralWidget);
+        auto* instanceLayout = new QVBoxLayout(instancePanel);
+        instanceLayout->setContentsMargins(0, 86, 4, 0);
+        instanceLayout->setSpacing(0);
+        instanceLayout->addWidget(view);
+        ui->horizontalLayout->addWidget(instancePanel, 1);
+#else
+        ui->horizontalLayout->addWidget(view);
+#endif
 #ifdef Q_OS_ANDROID
         // QHBoxLayout already belongs to the original central widget.
         // Inserting at index zero creates a persistent left control rail
@@ -390,7 +401,9 @@ patch("launcher/ui/MainWindow.cpp",
         mobileActionRail->setFixedWidth(174);
         mobileActionRail->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
         auto* mobileActions = new QVBoxLayout(mobileActionRail);
-        mobileActions->setContentsMargins(8, 12, 8, 10);
+        // Qt for Android reserves a native title/status inset above the Qt
+        // content; keep the FIRST action below that area.
+        mobileActions->setContentsMargins(8, 86, 8, 10);
         mobileActions->setSpacing(10);
         auto* addInstance = new QPushButton(QStringLiteral("+ Adicionar instância"), mobileActionRail);
         addInstance->setObjectName(QStringLiteral("androidAddInstance"));
@@ -438,6 +451,102 @@ patch("launcher/ui/instanceview/InstanceView.cpp",
 #else
         QString emptyString = tr("Welcome!") + "\\n" + tr("Click \\"Add Instance\\" to get started.");
 #endif''')
+
+# The original Qt desktop modal restores a >600px high saved geometry.
+# On a landscape phone the top is covered by Android's native title/status
+# area, and the instance name and controls end up off screen. Use a genuine
+# scrollable mobile dialog with fixed touch actions and NO desktop geometry.
+patch("launcher/ui/dialogs/NewInstanceDialog.cpp",
+      '#include <QScreen>',
+      '''#include <QScreen>
+#ifdef Q_OS_ANDROID
+#include <QScrollArea>
+#include <QHBoxLayout>
+#include <QVBoxLayout>
+#include <QGuiApplication>
+#endif''')
+patch("launcher/ui/dialogs/NewInstanceDialog.cpp",
+      '''    if (APPLICATION->settings()->get("NewInstanceGeometry").isValid()) {
+        restoreGeometry(QByteArray::fromBase64(APPLICATION->settings()->get("NewInstanceGeometry").toString().toUtf8()));
+    } else {
+        auto screen = parent->screen();
+        auto geometry = screen->availableSize();
+        resize(width(), qMin(geometry.height() - 50, 710));
+    }''',
+      '''#ifdef Q_OS_ANDROID
+    // Move the original name/group header and the REAL PageContainer into a
+    // scroll area. Their existing models, search, mod loaders and callbacks
+    // remain unchanged; scrolling reveals controls otherwise offscreen.
+    auto* scrollContent = new QWidget(this);
+    auto* contentLayout = new QVBoxLayout(scrollContent);
+    contentLayout->setContentsMargins(6, 4, 6, 6);
+    contentLayout->setSpacing(4);
+    while (ui->verticalLayout->count() > 0) {
+        auto* child = ui->verticalLayout->takeAt(0);
+        contentLayout->addItem(child);
+    }
+    auto* scroll = new QScrollArea(this);
+    scroll->setObjectName(QStringLiteral("androidInstanceScroll"));
+    scroll->setWidgetResizable(true);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setWidget(scrollContent);
+
+    ui->verticalLayout->setContentsMargins(8, 0, 8, 6);
+    ui->verticalLayout->setSpacing(5);
+    // Keep all top controls below the Qt Android activity/title overlay.
+    ui->verticalLayout->addSpacing(78);
+    auto* mobileButtons = new QHBoxLayout;
+    auto* dismiss = new QPushButton(QStringLiteral("Cancelar"), this);
+    auto* create = new QPushButton(QStringLiteral("Criar instância"), this);
+    dismiss->setMinimumHeight(44);
+    create->setMinimumHeight(44);
+    mobileButtons->addWidget(dismiss);
+    mobileButtons->addStretch();
+    mobileButtons->addWidget(create);
+    connect(dismiss, &QPushButton::clicked, this, &NewInstanceDialog::reject);
+    connect(create, &QPushButton::clicked, this, [this]() {
+        auto* original = m_buttons->button(QDialogButtonBox::Ok);
+        if (original && original->isEnabled())
+            original->click();
+    });
+    ui->verticalLayout->addLayout(mobileButtons);
+    ui->verticalLayout->addWidget(scroll, 1);
+    setMinimumSize(0, 0);
+    const QScreen* mobileScreen = parent ? parent->screen() : QGuiApplication::primaryScreen();
+    if (mobileScreen) {
+        const QSize viewport = mobileScreen->availableGeometry().size();
+        setMaximumSize(qMax(320, viewport.width() - 10),
+                       qMax(240, viewport.height() - 12));
+        resize(qMin(1000, qMax(320, viewport.width() - 10)),
+               qMin(610, qMax(240, viewport.height() - 12)));
+    }
+    qInfo() << "PineconeMC Android: scrollable new-instance dialog";
+#else
+    if (APPLICATION->settings()->get("NewInstanceGeometry").isValid()) {
+        restoreGeometry(QByteArray::fromBase64(APPLICATION->settings()->get("NewInstanceGeometry").toString().toUtf8()));
+    } else {
+        auto screen = parent->screen();
+        auto geometry = screen->availableSize();
+        resize(width(), qMin(geometry.height() - 50, 710));
+    }
+#endif''')
+
+# Android already provides an offline pt-BR catalog and picks a valid dark
+# theme/icon. Do not force the PC-only Appearance step on every fresh install:
+# the real launcher remains configurable later under Configurações.
+patch("launcher/Application.cpp",
+      '''    bool wizardRequired = javaRequired || languageRequired || pasteInterventionRequired || themeInterventionRequired || askjava || login;''',
+      '''#ifdef Q_OS_ANDROID
+    if (!validIcons)
+        settings()->set("IconTheme", QStringLiteral("pe_colored"));
+    if (!validWidgets)
+        settings()->set("ApplicationTheme", QStringLiteral("system"));
+    themeInterventionRequired = false;
+    qInfo() << "PineconeMC Android: desktop-only Appearance setup disabled";
+#endif
+    bool wizardRequired = javaRequired || languageRequired || pasteInterventionRequired || themeInterventionRequired || askjava || login;''')
 
 # The desktop wizard requests 620x660 logical pixels. On a landscape
 # phone the available height can be ~400 logical pixels, so the entire
