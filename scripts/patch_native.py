@@ -452,6 +452,25 @@ patch("launcher/ui/instanceview/InstanceView.cpp",
         QString emptyString = tr("Welcome!") + "\\n" + tr("Click \\"Add Instance\\" to get started.");
 #endif''')
 
+# The native Pinecone site may respond to HEAD requests while its metadata
+# endpoint is blocked on Android carriers. Pin the upstream project's OWN
+# official GitHub Pages mirror, whose net.minecraft index is available and
+# updated, instead of showing an empty vanilla version list. Keep the choice
+# in Settings so users can change the mirror.
+patch("launcher/Application.cpp",
+      '    bool languageRequired = settings()->get("Language").toString().isEmpty();',
+      '''#ifdef Q_OS_ANDROID
+    if (settings()->get("MetaURLOverride").toString().trimmed().isEmpty()) {
+        settings()->set("MetaURLOverride",
+                        QStringLiteral("https://elyprismlauncher.github.io/meta/v1/"));
+        // Prevent PineconeNetworkCheck from replacing a working metadata
+        // mirror based only on a HEAD request to the separate website host.
+        settings()->set("PineconeAutoServers", false);
+        qInfo() << "PineconeMC Android: official GitHub metadata mirror selected";
+    }
+#endif
+    bool languageRequired = settings()->get("Language").toString().isEmpty();''')
+
 # The original Qt desktop modal restores a >600px high saved geometry.
 # On a landscape phone the top is covered by Android's native title/status
 # area, and the instance name and controls end up off screen. Use a genuine
