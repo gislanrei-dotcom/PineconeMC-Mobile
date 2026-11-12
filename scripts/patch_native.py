@@ -244,6 +244,35 @@ patch("launcher/minecraft/launch/LauncherPartLaunch.cpp",
     m_process.setProcessEnvironment(instance->createLaunchEnvironment());
 #endif""")
 
+# Android uses an in-APK Java SE runtime, not a desktop JRE installed by
+# the user. Do not send mobile users to the desktop Java selection wizard
+# (which will always show "No versions are currently available").
+# The real game launch still calls AndroidRuntime::inspect() through CheckJava,
+# so skipping the PC-only configuration does NOT bypass runtime validation.
+patch("launcher/Application.cpp",
+      '    bool languageRequired = settings()->get("Language").toString().isEmpty();',
+      '''#ifdef Q_OS_ANDROID
+    javaRequired = false;
+    askjava = false;
+    settings()->set("IgnoreJavaWizard", true);
+    settings()->set("AutomaticJavaSwitch", false);
+    settings()->set("AutomaticJavaDownload", false);
+    // Previous desktop-derived defaults can allocate ~5 GiB to Minecraft on
+    // a phone. Keep a conservative initial heap while allowing later changes.
+    const int configuredMaxMemory = settings()->get("MaxMemAlloc").toInt();
+    if (configuredMaxMemory < 512 || configuredMaxMemory > 3072) {
+        settings()->set("MaxMemAlloc", 2048);
+    }
+    const int configuredMinMemory = settings()->get("MinMemAlloc").toInt();
+    if (configuredMinMemory < 256 ||
+        configuredMinMemory > settings()->get("MaxMemAlloc").toInt()) {
+        settings()->set("MinMemAlloc", 512);
+    }
+    qInfo() << "PineconeMC Android: skip desktop Java wizard;"
+               " embedded Java runtime will be checked at game launch.";
+#endif
+    bool languageRequired = settings()->get("Language").toString().isEmpty();''')
+
 # The desktop wizard requests 620x660 logical pixels. On a landscape
 # phone the available height can be ~400 logical pixels, so the entire
 # footer (Next / Finish) is rendered offscreen. Bound the wizard to the
