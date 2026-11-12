@@ -218,19 +218,19 @@ patch("launcher/launch/steps/CheckJava.cpp",
         emitFailed(runtime.error);
         return;
     }
-    const auto instance = m_parent->instance();
-    const auto settings = instance->settings();
-    settings->set("JavaPath", runtime.javaExecutable);
-    settings->set("JavaVersion", QStringLiteral("17"));
-    settings->set("JavaArchitecture", QStringLiteral("arm64"));
-    settings->set("JavaRealArchitecture", QStringLiteral("aarch64"));
-    settings->set("JavaVendor", QStringLiteral("OpenJDK Android experimental"));
+    const auto androidInstance = m_parent->instance();
+    const auto androidSettings = androidInstance->settings();
+    androidSettings->set("JavaPath", runtime.javaExecutable);
+    androidSettings->set("JavaVersion", QStringLiteral("17"));
+    androidSettings->set("JavaArchitecture", QStringLiteral("arm64"));
+    androidSettings->set("JavaRealArchitecture", QStringLiteral("aarch64"));
+    androidSettings->set("JavaVendor", QStringLiteral("OpenJDK Android experimental"));
     emit logLine(QStringLiteral(
        "Java 17 ARM64 empacotado encontrado: %1. "
        "Iniciando verificação real da JVM na execução; "
        "Minecraft ainda depende de bibliotecas gráficas Android.")
        .arg(runtime.javaExecutable), MessageLevel::Launcher);
-    instance->updateRuntimeContext();
+    androidInstance->updateRuntimeContext();
     emitSucceeded();
     return;
 #endif""")
