@@ -24,6 +24,17 @@ URL = (
 BASE = Path("android/assets/translations")
 BASE.mkdir(parents=True, exist_ok=True)
 
+# Keep the original Apache-2.0 license with the compiled catalog in the APK.
+license_url = (
+    "https://raw.githubusercontent.com/PrismLauncher/Translations/"
+    + REVISION + "/LICENSE"
+)
+with urlopen(license_url, timeout=90) as response:
+    license_bytes = response.read()
+if b"Apache License" not in license_bytes or len(license_bytes) < 5000:
+    raise RuntimeError("Missing third-party translation license")
+(BASE / "LICENSE-APACHE-2.0.txt").write_bytes(license_bytes)
+
 with urlopen(URL, timeout=90) as response:
     ts_bytes = response.read()
 if len(ts_bytes) < 100_000:
