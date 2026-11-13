@@ -980,4 +980,30 @@ patch("launcher/ui/widgets/VersionListView.cpp",
     bounds.moveTop(0);
 #endif''')
 
+# An Android Java 17 candidate is not a substitute for Java 8 (MC 1.8.9)
+# or Java 21 (recent Minecraft). Never silently disable the compatibility
+# check. Report the actual missing runtime instead of telling users to change
+# a desktop Java executable path or bypass validation.
+patch("launcher/minecraft/launch/VerifyJavaInstall.cpp",
+      '''    if (ignoreCompatibility) {
+        emit logLine(tr("Java major version is incompatible. Things might break.\\n"), MessageLevel::Warning);''',
+      '''#ifdef Q_OS_ANDROID
+    QStringList required;
+    for (auto major : compatibleMajors)
+        required << QString::number(major);
+    const QString reason = QStringLiteral(
+        "Minecraft desta instância exige Java %1, mas este APK possui apenas "
+        "o runtime experimental Java %2 ARM64. "
+        "Não é seguro ignorar a compatibilidade. Ainda é preciso integrar "
+        "um Java adequado à versão, inicialização da JVM e renderização "
+        "LWJGL/OpenGL para Android.")
+        .arg(required.join(QStringLiteral(" ou ")))
+        .arg(javaVersion.major());
+    emit logLine(reason, MessageLevel::Error);
+    emitFailed(reason);
+    return;
+#endif
+    if (ignoreCompatibility) {
+        emit logLine(tr("Java major version is incompatible. Things might break.\\n"), MessageLevel::Warning);''')
+
 print("Android CMake adjustments applied to actual PineconeMC source.")
