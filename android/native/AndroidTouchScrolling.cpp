@@ -10,6 +10,7 @@
 #include <QPointer>
 #include <QScrollBar>
 #include <QTouchEvent>
+#include <QTreeView>
 #include <QWidget>
 #include <QDebug>
 #include <cmath>
@@ -73,7 +74,6 @@ private:
         if (auto* view = qobject_cast<QAbstractItemView*>(area)) {
             // Paint every row and every column as ONE full viewport instead
             // of relying on partial scroll blits (which left ghost labels).
-            view->setViewportUpdateMode(QAbstractItemView::FullViewportUpdate);
             view->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
             view->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
             view->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -154,7 +154,9 @@ private:
                     if (dx != 0) horizontal->setValue(horizontal->value() - dx);
                 }
                 // Explicitly invalidate the entire viewport after dragging.
-                m_activeViewport->update(m_activeViewport->rect());
+                // Synchronous repaint avoids Qt Android's stale scroll-blit
+                // tiles when rapidly dragging a version list.
+                m_activeViewport->repaint(m_activeViewport->rect());
             }
             m_lastPos = pos;
             touch->accept();
