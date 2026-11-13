@@ -11,5 +11,6 @@ struct Status {
     QString error;
     bool available() const { return error.isEmpty(); }
 };
-Status inspect();
+// Version-specific Android OpenJDK images (8 for classic MC, 17 for newer).
+Status inspect(int requiredMajor = 17);
 } // namespace AndroidRuntime
