@@ -1,0 +1,28 @@
+name: Validate isolated OpenJDK 8 Android runtime layout
+on:
+  push:
+    paths:
+      - 'research/prepare_android_java8.py'
+      - '.github/workflows/validate-java8-staging.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  stage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ELF tools
+        run: sudo apt-get -o Acquire::Retries=4 install -y patchelf binutils
+      - name: Audit verified Java8 runtime and native dependencies
+        run: |
+          set -euxo pipefail
+          python3 -m py_compile research/prepare_android_java8.py
+          python3 research/prepare_android_java8.py
+          test -s candidate8/android/assets/runtime/java-8/lib/rt.jar
+          test -s candidate8/android/libs/arm64-v8a/libp8_jvm.so
+          test -s candidate8/android/assets/runtime/java-8/manifest.tsv
+          readelf -h candidate8/android/libs/arm64-v8a/libp8_jvm.so | grep 'AArch64'
+          readelf -d candidate8/android/libs/arm64-v8a/libp8_java.so | grep 'libp8_jvm.so'
+          echo 'Native package staging only, no claim that Minecraft runs.'
