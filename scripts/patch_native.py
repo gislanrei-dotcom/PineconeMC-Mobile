@@ -1032,4 +1032,8 @@ patch("launcher/ui/widgets/VersionListView.cpp",
         paintInfoLabel(event);
     }''')
 
+patch("launcher/minecraft/launch/VerifyJavaInstall.cpp",
+      '#include <memory>',
+      '#include <memory>\n#ifdef Q_OS_ANDROID\n#include <QStringList>\n#endif')
+
 print("Android CMake adjustments applied to actual PineconeMC source.")
