@@ -1006,4 +1006,30 @@ patch("launcher/minecraft/launch/VerifyJavaInstall.cpp",
     if (ignoreCompatibility) {
         emit logLine(tr("Java major version is incompatible. Things might break.\\n"), MessageLevel::Warning);''')
 
+# IMPORTANT: upstream VersionListView::updateEmptyViewPort() invalidates the
+# viewport ONLY when the list is empty. As soon as versions load, the old
+# white "No versions" badge can remain painted across the newly populated
+# version/date columns. Always invalidate the complete viewport on any change.
+patch("launcher/ui/widgets/VersionListView.cpp",
+      '''    if (!m_itemCount) {
+        viewport()->update();
+    }''',
+      '''    // Must erase an old empty-state badge when real versions appear too.
+    viewport()->update(viewport()->rect());''')
+patch("launcher/ui/widgets/VersionListView.cpp",
+      '''    } else {
+        paintInfoLabel(event);
+    }''',
+      '''    } else {
+#ifdef Q_OS_ANDROID
+        // Paint the full background FIRST. The white empty-state badge must
+        // not accumulate over the old frame when the finger scrolls.
+        {
+            QPainter clear(viewport());
+            clear.fillRect(event->rect(), palette().color(QPalette::Base));
+        }
+#endif
+        paintInfoLabel(event);
+    }''')
+
 print("Android CMake adjustments applied to actual PineconeMC source.")
