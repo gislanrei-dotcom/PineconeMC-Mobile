@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write  # required for one-click direct .apk prerelease download
 
 jobs:
   port-qt-cpp:
@@ -321,5 +321,23 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      # No GitHub Release: the original PineconeMC runtime still needs Android
-      # Java Edition JVM / LWJGL graphics / touch and device testing.
+      # Direct APK for Android: release assets are regular .apk files, unlike
+      # GitHub Actions artifacts (which GitHub always wraps in a ZIP archive).
+      # Explicitly marked PRE-RELEASE; a successful build does not imply the
+      # embedded Java, LWJGL, game controls or Minecraft are playable.
+      - name: Publish DIRECT APK download (experimental prerelease only)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          cp out/PineconeMC-Mobile-Android-Java17-Experimental.apk out/PineconeMC-Mobile.apk
+          test -s out/PineconeMC-Mobile.apk
+          TAG="android-ui-experimental-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" "out/PineconeMC-Mobile.apk" \
+            --target "$GITHUB_SHA" \
+            --title "PineconeMC Mobile APK experimental #${GITHUB_RUN_NUMBER}" \
+            --notes "Arquivo APK direto para Android ARM64. Teste experimental do layout e do toque. Minecraft Java ainda NÃO está confirmado como jogável: JVM e ponte gráfica pendentes." \
+            --prerelease
+          echo "APK DIRETO: https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/PineconeMC-Mobile.apk"
+
