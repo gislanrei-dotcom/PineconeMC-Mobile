@@ -813,7 +813,8 @@ patch("launcher/ui/widgets/PageContainer.cpp",
     m_pageList->setMaximumWidth(156);
     m_pageList->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
     m_pageList->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
-    QScroller::grabGesture(m_pageList->viewport(), QScroller::TouchGesture);
+    // AndroidTouchScrolling installs a stable direct-drag filter globally.
+    // Do not install QScroller here: dual gesture handlers corrupt row paints.
 #else
     m_pageList->setIconSize(QSize(pageIconSize, pageIconSize));
 #endif''')
