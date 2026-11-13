@@ -204,6 +204,7 @@ patch("launcher/launch/steps/CheckJava.cpp",
       """#include "java/JavaUtils.h"
 #ifdef Q_OS_ANDROID
 #include "AndroidRuntime.h"
+#include "minecraft/PackProfile.h"
 #endif""")
 patch("launcher/launch/steps/CheckJava.cpp",
       """void CheckJava::executeTask()
@@ -215,24 +216,31 @@ patch("launcher/launch/steps/CheckJava.cpp",
     // not valid detection paths for an APK-packed JNI Java subprocess.
     // The original desktop check reported Java binary "" missing even when
     // libpinecone_java.so was successfully packed in nativeLibraryDir.
-    const auto runtime = AndroidRuntime::inspect();
+    const auto androidInstance = m_parent->instance();
+    const auto compatible = androidInstance->getPackProfile()->getProfile()->getCompatibleJavaMajors();
+    const int requiredJava = compatible.contains(8) ? 8 :
+                             compatible.contains(17) ? 17 : 0;
+    if (!requiredJava) {
+        emitFailed(QStringLiteral("Esta versão do Minecraft precisa de Java Android ainda não integrado."));
+        return;
+    }
+    const auto runtime = AndroidRuntime::inspect(requiredJava);
     if (!runtime.available()) {
         emit logLine(runtime.error, MessageLevel::Fatal);
         emitFailed(runtime.error);
         return;
     }
-    const auto androidInstance = m_parent->instance();
     const auto androidSettings = androidInstance->settings();
     androidSettings->set("JavaPath", runtime.javaExecutable);
-    androidSettings->set("JavaVersion", QStringLiteral("17"));
+    androidSettings->set("JavaVersion", QString::number(requiredJava));
     androidSettings->set("JavaArchitecture", QStringLiteral("arm64"));
     androidSettings->set("JavaRealArchitecture", QStringLiteral("aarch64"));
-    androidSettings->set("JavaVendor", QStringLiteral("OpenJDK Android experimental"));
+    androidSettings->set("JavaVendor", QStringLiteral("OpenJDK Android versioned runtime"));
     emit logLine(QStringLiteral(
-       "Java 17 ARM64 empacotado encontrado: %1. "
+       "Java %1 ARM64 empacotado encontrado: %2. "
        "Iniciando verificação real da JVM na execução; "
        "Minecraft ainda depende de bibliotecas gráficas Android.")
-       .arg(runtime.javaExecutable), MessageLevel::Launcher);
+       .arg(requiredJava).arg(runtime.javaExecutable), MessageLevel::Launcher);
     androidInstance->updateRuntimeContext();
     emitSucceeded();
     return;
@@ -276,7 +284,8 @@ patch("launcher/minecraft/launch/LauncherPartLaunch.cpp",
       "    m_process.setProcessEnvironment(instance->createLaunchEnvironment());",
       """#ifdef Q_OS_ANDROID
     QProcessEnvironment environment = instance->createLaunchEnvironment();
-    const auto androidRuntime = AndroidRuntime::inspect();
+    const int runtimeMajor = instance->settings()->get("JavaVersion").toInt();
+    const auto androidRuntime = AndroidRuntime::inspect(runtimeMajor);
     if (!androidRuntime.available()) {
         emit logLine(androidRuntime.error, MessageLevel::Fatal);
         emitFailed(androidRuntime.error);
