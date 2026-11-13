@@ -25,6 +25,9 @@ LIBS = BASE / "libs/arm64-v8a"
 SYSTEM = {"libc.so", "libdl.so", "libm.so", "liblog.so",
           "libandroid.so", "libz.so", "libEGL.so", "libGLESv2.so",
           "libc++_shared.so"}
+# freetype is supplied by the existing Java17/Android image; ensure APK packer
+# validates it separately before launching Java8, not an Android system lib.
+EXTERNAL_BUNDLED = {"libfreetype.so"}
 
 def digest(path):
     h = hashlib.sha256()
@@ -116,6 +119,8 @@ def main():
                 if original in renamed_by_original:
                     run("patchelf", "--replace-needed", original,
                         renamed_by_original[original], str(target))
+                elif original in EXTERNAL_BUNDLED:
+                    print("EXTERNAL_APK_DEPENDENCY:", renamed, original)
                 elif original not in SYSTEM:
                     raise RuntimeError(f"Unresolved Java8 native library dependency: {renamed} -> {original}")
             run("patchelf", "--set-soname", renamed, str(target))
