@@ -913,4 +913,70 @@ patch("launcher/ui/instanceview/InstanceView.cpp",
       '''QStringLiteral("Bem-vindo!\\nToque em Adicionar instância para começar.");''',
       '''QStringLiteral("Sem instâncias.\\nToque em + Instância para criar uma.");''')
 
+# Version list cells were wrapping and resizing independently in narrow
+# mobile dialogs. That makes their rendered rows appear shifted relative to
+# the date/type columns and makes selecting a row unreliable. Keep one
+# predictable row height and one full-row selection across all columns.
+patch("launcher/ui/widgets/VersionSelectWidget.cpp",
+      '    listView->setWordWrap(true);',
+      '''#ifdef Q_OS_ANDROID
+    listView->setWordWrap(false);
+    listView->setUniformRowHeights(true);
+    listView->setSelectionBehavior(QAbstractItemView::SelectRows);
+    listView->setSelectionMode(QAbstractItemView::SingleSelection);
+    listView->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+    listView->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
+    listView->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+#else
+    listView->setWordWrap(true);
+#endif''')
+patch("launcher/ui/widgets/VersionSelectWidget.cpp",
+      '''    listView->header()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    listView->header()->setSectionResizeMode(resizeOnColumn, QHeaderView::Stretch);''',
+      '''    listView->header()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    listView->header()->setSectionResizeMode(resizeOnColumn, QHeaderView::Stretch);
+#ifdef Q_OS_ANDROID
+    // Avoid all columns fighting for unlimited desktop widths. Reserve
+    // compact date/type columns and give the version name the remaining space.
+    auto* header = listView->header();
+    header->setStretchLastSection(false);
+    const int columns = listView->model()->columnCount();
+    for (int col = 0; col < columns; ++col) {
+        if (col != resizeOnColumn) {
+            header->setSectionResizeMode(col, QHeaderView::Interactive);
+            header->resizeSection(col, col == 1 ? 106 : 84);
+        }
+    }
+#endif''')
+# Fix an upstream QTreeView model-notification bug: on row removal, the old
+# code accidentally called rowsInserted(). When filters switch versions,
+# it can leave visual tree positions out of sync with model indexes.
+patch("launcher/ui/widgets/VersionListView.cpp",
+      '''    m_itemCount -= end - start + 1;
+    updateEmptyViewPort();
+    QTreeView::rowsInserted(parent, start, end);''',
+      '''    m_itemCount -= end - start + 1;
+    updateEmptyViewPort();
+    QTreeView::rowsAboutToBeRemoved(parent, start, end);''')
+patch("launcher/ui/widgets/VersionListView.cpp",
+      '''    QFont font("sans", 20);
+    font.setBold(true);
+
+    QRect bounds = viewport()->geometry();
+    bounds.moveTop(0);''',
+      '''#ifdef Q_OS_ANDROID
+    QFont font("sans", 11);
+#else
+    QFont font("sans", 20);
+#endif
+    font.setBold(true);
+#ifdef Q_OS_ANDROID
+    // Paint within the current list viewport, not the parent widget's
+    // (possibly cropped) geometry; don't overdraw adjacent dialogs.
+    QRect bounds = viewport()->rect();
+#else
+    QRect bounds = viewport()->geometry();
+    bounds.moveTop(0);
+#endif''')
+
 print("Android CMake adjustments applied to actual PineconeMC source.")
