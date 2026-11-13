@@ -12,9 +12,10 @@ import struct
 import tarfile
 import urllib.request
 
-URL = "https://github.com/PojavLauncherTeam/android-openjdk-build-multiarch/releases/download/jre8-40df388/jre8-arm64-20220811-release.tar.xz"
+URL = "https://github.com/FahmiArrohmann/termux-java8/releases/download/v1.0/jre8-arm64-20260927-release.tar.xz"
 MAX_BYTES = 100_000_000
 ARCHIVE = "java8-runtime-arm64.tar.xz"
+PINNED_SHA256 = "6613175678ab17ace21a41720f6ad308ebf9101236920cd4b3f5058c823b902c"
 
 def main():
     req = urllib.request.Request(URL, headers={"User-Agent": "PineconeMC-Mobile-audit/1"})
@@ -29,6 +30,8 @@ def main():
             sha.update(block)
     print("SOURCE:", URL)
     print("ARCHIVE_SHA256:", sha.hexdigest())
+    if sha.hexdigest() != PINNED_SHA256:
+        raise RuntimeError("OpenJDK 8 release checksum mismatch")
     print("ARCHIVE_BYTES:", copied)
     names, sizes, links = [], {}, []
     with tarfile.open(ARCHIVE, mode="r:xz") as tar:
