@@ -62,6 +62,42 @@ def main():
         raise RuntimeError("Java 8 JVM shared library absent")
     if not any(name.endswith("/rt.jar") for name in names):
         raise RuntimeError("Java 8 class library rt.jar absent")
+    # Inspect actual ARM64 ELF dynamic dependencies before packing. Unlike
+    # a desktop JRE, Android's linker cannot resolve arbitrary glibc paths.
+    import subprocess
+    import tempfile
+    import pathlib
+    libs = {}
+    with tarfile.open(ARCHIVE, mode="r:xz") as tar:
+        for item in tar:
+            if not item.isfile() or not item.name.endswith(".so"):
+                continue
+            member = tar.extractfile(item)
+            head = member.read(64) if member else b""
+            if head[:4] != b"\\x7fELF":
+                continue
+            if head[4] != 2 or int.from_bytes(head[18:20], "little") != 183:
+                raise RuntimeError("Not AArch64 ELF: " + item.name)
+            with tempfile.NamedTemporaryFile(suffix=".so") as tmp:
+                tmp.write(head)
+                while block := member.read(1048576):
+                    tmp.write(block)
+                tmp.flush()
+                output = subprocess.run(
+                    ["readelf", "-d", tmp.name], check=True,
+                    text=True, capture_output=True).stdout
+                needed = []
+                for line in output.splitlines():
+                    if "(NEEDED)" in line or "(RPATH)" in line or "(RUNPATH)" in line:
+                        needed.append(line.strip())
+                libs[item.name] = needed
+    print("ARM64_NATIVE_LIBRARIES:", len(libs))
+    for name, needed in sorted(libs.items()):
+        print("ELF:", name)
+        for dep in needed:
+            print("  DEP:", dep)
+    if not any(name.endswith("/server/libjvm.so") for name in libs):
+        raise RuntimeError("Java 8 libjvm.so missing from Bionic ELF inventory")
     print("ARCHIVE_INVENTORY_SUCCESS: yes (device execution NOT tested)")
 
 if __name__ == "__main__":
