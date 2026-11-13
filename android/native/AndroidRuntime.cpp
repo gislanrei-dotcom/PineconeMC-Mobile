@@ -43,13 +43,14 @@ QByteArray hashFile(const QString& path)
 // Copies non-executable Java SE data to private storage, and links any Java
 // .so files to nativeLibraryDir. Android's app-data executable restriction
 // means native machine code is NEVER unpacked as ordinary writable assets.
-QString installRuntimeAssets(const QString& nativeDir, const QString& javaHome)
+QString installRuntimeAssets(const QString& nativeDir, const QString& javaHome, int major)
 {
-    QFile manifest(QStringLiteral("assets:/runtime/java-17/manifest.tsv"));
+    const QString assetPrefix = QStringLiteral("assets:/runtime/java-%1/").arg(major);
+    QFile manifest(assetPrefix + QStringLiteral("manifest.tsv"));
     if (!manifest.exists())
-        return {}; // Existing diagnostic APK intentionally has no JRE.
+        return QStringLiteral("Java %1 não está incluído neste APK.").arg(major);
     if (!manifest.open(QIODevice::ReadOnly))
-        return QStringLiteral("Não foi possível abrir o manifesto do Java 17.");
+        return QStringLiteral("Não foi possível abrir o manifesto do Java Android.");
 
     while (!manifest.atEnd()) {
         const QString line = QString::fromUtf8(manifest.readLine()).trimmed();
@@ -57,60 +58,60 @@ QString installRuntimeAssets(const QString& nativeDir, const QString& javaHome)
             continue;
         const QStringList parts = line.split('\t');
         if (parts.size() < 3 || !safeRelativePath(parts.at(1)))
-            return QStringLiteral("Manifesto Java 17 inválido: caminho relativo incorreto.");
+            return QStringLiteral("Manifesto Java Android inválido: caminho relativo incorreto.");
         const QString destination = QDir(javaHome).filePath(parts.at(1));
         if (!QDir().mkpath(QFileInfo(destination).absolutePath()))
-            return QStringLiteral("Não foi possível preparar a pasta do Java 17.");
+            return QStringLiteral("Não foi possível preparar a pasta do Java Android.");
 
         if (parts.at(0) == "F" && parts.size() == 4) {
             bool validSize = false;
             const qint64 expectedSize = parts.at(2).toLongLong(&validSize);
             const QByteArray expectedHash = parts.at(3).toLatin1();
             if (!validSize || expectedSize < 0 || expectedHash.size() != 64)
-                return QStringLiteral("Manifesto Java 17 contém tamanho ou SHA256 inválido.");
+                return QStringLiteral("Manifesto Java Android contém tamanho ou SHA256 inválido.");
             QFileInfo existing(destination);
             if (existing.isFile() && existing.size() == expectedSize
                 && hashFile(destination) == expectedHash) {
                 continue;
             }
 
-            QFile asset(QStringLiteral("assets:/runtime/java-17/") + parts.at(1));
+            QFile asset(assetPrefix + parts.at(1));
             if (!asset.open(QIODevice::ReadOnly))
-                return QStringLiteral("Arquivo Java 17 ausente do APK: ") + parts.at(1);
+                return QStringLiteral("Arquivo Java Android ausente do APK: ") + parts.at(1);
             QSaveFile output(destination);
             if (!output.open(QIODevice::WriteOnly))
-                return QStringLiteral("Não foi possível criar arquivo Java 17: ") + parts.at(1);
+                return QStringLiteral("Não foi possível criar arquivo Java Android: ") + parts.at(1);
             QCryptographicHash sha(QCryptographicHash::Sha256);
             qint64 written = 0;
             while (!asset.atEnd()) {
                 const QByteArray block = asset.read(128 * 1024);
                 if (block.isEmpty() && asset.error() != QFileDevice::NoError)
-                    return QStringLiteral("Falha ao ler arquivo Java 17: ") + parts.at(1);
+                    return QStringLiteral("Falha ao ler arquivo Java Android: ") + parts.at(1);
                 if (output.write(block) != block.size())
-                    return QStringLiteral("Sem espaço ou falha ao gravar Java 17: ") + parts.at(1);
+                    return QStringLiteral("Sem espaço ou falha ao gravar Java Android: ") + parts.at(1);
                 sha.addData(block);
                 written += block.size();
             }
             if (written != expectedSize || sha.result().toHex() != expectedHash)
-                return QStringLiteral("Falha de integridade SHA256 do Java 17: ") + parts.at(1);
+                return QStringLiteral("Falha de integridade SHA256 do Java Android: ") + parts.at(1);
             if (!output.commit())
-                return QStringLiteral("Falha ao salvar arquivo Java 17: ") + parts.at(1);
+                return QStringLiteral("Falha ao salvar arquivo Java Android: ") + parts.at(1);
         } else if (parts.at(0) == "L" && parts.size() == 3) {
             const QString library = parts.at(2);
             if (!library.startsWith("lib") || !library.endsWith(".so")
                 || library.contains('/') || library.contains('\\')) {
-                return QStringLiteral("Manifesto Java 17 contém nome de biblioteca inválido.");
+                return QStringLiteral("Manifesto Java Android contém nome de biblioteca inválido.");
             }
             const QString nativePath = QDir(nativeDir).filePath(library);
             if (!QFileInfo(nativePath).isFile())
-                return QStringLiteral("Biblioteca Java 17 não incluída no APK: ") + library;
+                return QStringLiteral("Biblioteca Java Android não incluída no APK: ") + library;
             if (QFileInfo(destination).canonicalFilePath() == QFileInfo(nativePath).canonicalFilePath())
                 continue;
             QFile::remove(destination);
             if (!QFile::link(nativePath, destination))
-                return QStringLiteral("Não foi possível vincular biblioteca Java 17: ") + library;
+                return QStringLiteral("Não foi possível vincular biblioteca Java Android: ") + library;
         } else {
-            return QStringLiteral("Manifesto Java 17 contém registro inválido.");
+            return QStringLiteral("Manifesto Java Android contém registro inválido.");
         }
     }
     return {};
@@ -118,10 +119,14 @@ QString installRuntimeAssets(const QString& nativeDir, const QString& javaHome)
 
 } // namespace
 
-Status inspect()
+Status inspect(int requiredMajor)
 {
     Status result;
-    result.runtimeVersion = 17;
+    result.runtimeVersion = requiredMajor;
+    if (requiredMajor != 8 && requiredMajor != 17) {
+        result.error = QStringLiteral("Runtime Java %1 ainda não empacotado para Android.").arg(requiredMajor);
+        return result;
+    }
 
     const QJniObject context = QNativeInterface::QAndroidApplication::context();
     if (!context.isValid()) {
@@ -145,12 +150,14 @@ Status inspect()
     }
     const QDir libs(result.nativeLibraryDirectory);
     result.javaExecutable = libs.filePath(QStringLiteral("libpinecone_java.so"));
-    result.jvmLibrary = libs.filePath(QStringLiteral("libjvm.so"));
+    result.jvmLibrary = libs.filePath(requiredMajor == 8
+        ? QStringLiteral("libp8_jvm.so") : QStringLiteral("libjvm.so"));
     const QString javaHome = QDir(
         QStandardPaths::writableLocation(QStandardPaths::AppDataLocation))
-        .filePath(QStringLiteral("runtime/java-17"));
-    result.runtimeModules = QDir(javaHome).filePath(QStringLiteral("lib/modules"));
-    const QString installError = installRuntimeAssets(result.nativeLibraryDirectory, javaHome);
+       .filePath(QStringLiteral("runtime/java-%1").arg(requiredMajor));
+    result.runtimeModules = QDir(javaHome).filePath(requiredMajor == 8
+        ? QStringLiteral("lib/rt.jar") : QStringLiteral("lib/modules"));
+    const QString installError = installRuntimeAssets(result.nativeLibraryDirectory, javaHome, requiredMajor);
     if (!installError.isEmpty()) {
         result.error = installError;
         return result;
@@ -158,14 +165,14 @@ Status inspect()
 
     if (!QFileInfo(result.javaExecutable).isExecutable()) {
         result.error = QStringLiteral(
-            "O executável Java 17 para Android ARM64 ainda não está incluído no APK. "
+            "O executável Java Android para Android ARM64 ainda não está incluído no APK. "
             "É necessário compilar e empacotar o runtime OpenJDK para Android.");
     } else if (!QFileInfo(result.jvmLibrary).isFile()) {
         result.error = QStringLiteral(
-            "A biblioteca OpenJDK libjvm.so para Android ARM64 não está instalada.");
+            "A biblioteca nativa OpenJDK exigida não está instalada.");
     } else if (!QFileInfo(result.runtimeModules).isFile()) {
         result.error = QStringLiteral(
-            "Os módulos Java SE 17 não foram instalados no armazenamento do aplicativo.");
+            "A biblioteca de classes Java exigida não foi instalada no armazenamento do aplicativo.");
     }
     return result;
 }
