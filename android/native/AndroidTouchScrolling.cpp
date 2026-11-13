@@ -167,12 +167,25 @@ private:
             const QPointF pos = touch->points().first().position();
             const QPointF global = touch->points().first().globalPosition();
             auto widget = m_activeViewport;
+            auto area = m_activeArea;
             m_activeArea.clear();
             m_activeViewport.clear();
-            if (click && widget)
-                sendClick(widget, pos, global);
-            else if (widget)
+            if (click && widget) {
+                QWidget* receiver = widget;
+                // Item views must receive row-clicks on their viewport.
+                // Scrollable forms (settings pages) instead have real child
+                // widgets such as buttons, checkboxes and edit fields.
+                // Send a tap to that child, not the scroll area's viewport.
+                if (!qobject_cast<QAbstractItemView*>(area.data())) {
+                    if (auto* child = widget->childAt(pos.toPoint()))
+                        receiver = child;
+                }
+                const QPointF receiverLocal(
+                    receiver->mapFromGlobal(global.toPoint()));
+                sendClick(receiver, receiverLocal, global);
+            } else if (widget) {
                 widget->update(widget->rect());
+            }
             touch->accept();
             return true;
         }
