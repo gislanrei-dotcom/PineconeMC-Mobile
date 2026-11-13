@@ -121,6 +121,22 @@ jobs:
           grep -F "keepDebugSymbols.add" android/build.gradle
           sha256sum android/libs/arm64-v8a/libjavajpeg.so > "$RUNNER_TEMP/javajpeg.sha256"
 
+      - name: Integrate verified OpenJDK 8 for classic Minecraft ARM64
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 research/prepare_android_java8.py
+          test -s candidate8/android/assets/runtime/java-8/lib/rt.jar
+          test -s candidate8/android/libs/arm64-v8a/libp8_jvm.so
+          mkdir -p android/assets android/libs/arm64-v8a
+          cp -a candidate8/android/assets/. android/assets/
+          cp -a candidate8/android/libs/. android/libs/
+          test -s android/assets/runtime/java-8/manifest.tsv
+          test -s android/assets/runtime/java-17/manifest.tsv
+          test -s android/libs/arm64-v8a/libp8_java.so
+          test -s android/libs/arm64-v8a/libfreetype.so
+          echo "Java 8 and Java 17 staged; gameplay still needs verified graphics"
+
       - name: Bundle Brazilian Portuguese (pt-BR) for offline use
         shell: bash
         run: |
@@ -272,6 +288,23 @@ jobs:
           )
           print("Qt startup C++ runtime matches NDK official shared library.")
           PY
+          # Java 8 must be in the same .apk, not a second application.
+          python3 - "$APK" <<'PYJAVA8'
+          import zipfile, sys
+          with zipfile.ZipFile(sys.argv[1]) as package:
+              names = set(package.namelist())
+              for path in (
+                  "assets/runtime/java-8/lib/rt.jar",
+                  "assets/runtime/java-8/manifest.tsv",
+                  "lib/arm64-v8a/libp8_jvm.so",
+                  "lib/arm64-v8a/libp8_java.so",
+                  "lib/arm64-v8a/libp8_verify.so",
+                  "lib/arm64-v8a/libfreetype.so",
+              ):
+                  assert path in names, f"Java 8 dependency missing from APK: {path}"
+              assert package.getinfo("assets/runtime/java-8/lib/rt.jar").file_size > 20_000_000
+              print("Java 8 Android runtime packaged alongside Java 17.")
+          PYJAVA8
           # Verify every Java asset and native symlink target survived
           # androiddeployqt/Gradle assembly, not just the source overlay.
           python3 - "$APK" <<'PY'
