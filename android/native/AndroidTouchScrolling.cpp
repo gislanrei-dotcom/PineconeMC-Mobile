@@ -192,8 +192,16 @@ private:
             // Do not send a fake click after a drag; route an ordinary tap to
             // the ORIGINAL child widget or the original item-view viewport.
             if (tap && target) {
-                if (qobject_cast<QAbstractItemView*>(scroll.data()))
+                if (qobject_cast<QAbstractItemView*>(scroll.data())) {
                     target = scroll->viewport();
+                } else if (scroll && target == scroll->viewport()) {
+                    // QScrollArea often receives the touch after a child
+                    // button ignores the native event. Find the real control.
+                    // Widget::childAt returns the deepest visible hit target.
+                    const QPointF local(target->mapFromGlobal(global.toPoint()));
+                    if (auto* child = target->childAt(local.toPoint()))
+                        target = child;
+                }
                 sendTap(target, global);
             } else {
                 repaintAll(scroll);
