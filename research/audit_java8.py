@@ -74,7 +74,7 @@ def main():
                 continue
             member = tar.extractfile(item)
             head = member.read(64) if member else b""
-            if head[:4] != b"\\x7fELF":
+            if head[:4] != b"\x7fELF":
                 continue
             if head[4] != 2 or int.from_bytes(head[18:20], "little") != 183:
                 raise RuntimeError("Not AArch64 ELF: " + item.name)
