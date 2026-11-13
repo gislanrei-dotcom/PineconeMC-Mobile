@@ -87,6 +87,7 @@ patch("launcher/main.cpp",
 #ifdef Q_OS_ANDROID
 #include <QSslSocket>
 #include <QDebug>
+#include "AndroidTouchScrolling.h"
 #endif''')
 patch("launcher/main.cpp",
       '''    // initialize Qt
@@ -98,6 +99,7 @@ patch("launcher/main.cpp",
     // initialize Qt
     Application app(argc, argv);
 #ifdef Q_OS_ANDROID
+    AndroidTouchScrolling::install(&app);
     qInfo() << "PineconeMC Android TLS available:" << QSslSocket::supportsSsl()
             << "SSL runtime:" << QSslSocket::sslLibraryVersionString()
             << "SSL build:" << QSslSocket::sslLibraryBuildVersionString();
@@ -191,8 +193,9 @@ patch("launcher/CMakeLists.txt",
 if(ANDROID)
     target_sources(Launcher_logic PRIVATE
         "${CMAKE_SOURCE_DIR}/../android/native/AndroidRuntime.cpp"
-        "${CMAKE_SOURCE_DIR}/../android/native/AndroidTouchBridge.cpp")
-    target_include_directories(Launcher_logic PRIVATE
+        "${CMAKE_SOURCE_DIR}/../android/native/AndroidTouchBridge.cpp"
+        "${CMAKE_SOURCE_DIR}/../android/native/AndroidTouchScrolling.cpp")
+    target_include_directories(Launcher_logic PUBLIC
         "${CMAKE_SOURCE_DIR}/../android/native")
 endif()""")
 
