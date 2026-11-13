@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Android touch support for the *existing* Qt Widgets launcher.
+// One touch handler for all scroll areas, including lazily created dialogs.
+// In particular, avoid QScroller / incremental QWidget scroll blitting:
+// some Qt Android devices display stale or displaced text after those blits.
 #include "AndroidTouchScrolling.h"
-
 #include <QAbstractItemView>
 #include <QAbstractScrollArea>
 #include <QApplication>
@@ -15,30 +18,23 @@
 #include <QDebug>
 #include <cmath>
 
-// Do NOT use QScroller::grabGesture on nested QTreeViews: the kinetic scroll
-// animation can scroll/paint only part of the viewport on Qt for Android
-// (stale version labels overlay dates and other panels). Handle finger-drag
-// directly and request complete view repaints instead. Keep the original
-// Qt widgets, proxy models and normal QScrollBar positions.
 namespace {
-
-class TouchScrollInstaller final : public QObject {
+class MobileTouchFilter final : public QObject {
 public:
-    explicit TouchScrollInstaller(QObject* application) : QObject(application)
+    explicit MobileTouchFilter(QObject* application) : QObject(application)
     {
         application->installEventFilter(this);
-        for (QWidget* widget : QApplication::allWidgets()) {
+        for (auto* widget : QApplication::allWidgets())
             if (auto* area = qobject_cast<QAbstractScrollArea*>(widget))
                 prepare(area);
-        }
     }
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override
     {
         switch (event->type()) {
-        case QEvent::Show:
         case QEvent::Polish:
+        case QEvent::Show:
             if (auto* area = qobject_cast<QAbstractScrollArea*>(watched))
                 prepare(area);
             return false;
@@ -46,157 +42,172 @@ protected:
         case QEvent::TouchUpdate:
         case QEvent::TouchEnd:
         case QEvent::TouchCancel:
-            return touchEvent(watched, static_cast<QTouchEvent*>(event));
+            return handleTouch(qobject_cast<QWidget*>(watched),
+                               static_cast<QTouchEvent*>(event));
         default:
             return false;
         }
     }
 
 private:
-    QPointer<QAbstractScrollArea> m_activeArea;
-    QPointer<QWidget> m_activeViewport;
-    QPointF m_startPos;
-    QPointF m_lastPos;
+    QPointer<QAbstractScrollArea> m_scroll;
+    QPointer<QWidget> m_touchTarget;
     QPointF m_lastGlobal;
-    qreal m_verticalFraction = 0;
-    qreal m_horizontalFraction = 0;
-    bool m_wasDrag = false;
+    QPointF m_firstGlobal;
+    qreal m_remY = 0, m_remX = 0;
+    bool m_drag = false;
 
     static void prepare(QAbstractScrollArea* area)
     {
-        if (!area || area->property("_pineconeTouchScrollReady").toBool())
+        if (!area || area->property("_pineconeScrollReady").toBool())
             return;
-        QWidget* viewport = area->viewport();
-        if (!viewport)
-            return;
-        area->setProperty("_pineconeTouchScrollReady", true);
-        viewport->setAttribute(Qt::WA_AcceptTouchEvents, true);
+        area->setProperty("_pineconeScrollReady", true);
+        if (auto* viewport = area->viewport()) {
+            viewport->setAttribute(Qt::WA_AcceptTouchEvents, true);
+            // Backing store MUST fully redraw every region on Android.
+            viewport->setAttribute(Qt::WA_StaticContents, false);
+            viewport->setAttribute(Qt::WA_OpaquePaintEvent, false);
+            viewport->setAutoFillBackground(true);
+        }
         if (auto* view = qobject_cast<QAbstractItemView*>(area)) {
-            // Paint every row and every column as ONE full viewport instead
-            // of relying on partial scroll blits (which left ghost labels).
             view->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
             view->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
             view->setSelectionBehavior(QAbstractItemView::SelectRows);
-            if (auto* tree = qobject_cast<QTreeView*>(area))
+            if (auto* tree = qobject_cast<QTreeView*>(area)) {
                 tree->setUniformRowHeights(true);
+                tree->setWordWrap(false);
+            }
         }
-        qInfo() << "PineconeMC Android: stable finger drag enabled for"
-                << area->metaObject()->className();
     }
 
-    static int scrollAmount(qreal delta, qreal& fraction)
+    static bool isInsideViewport(QWidget* target, QAbstractScrollArea* area)
     {
-        fraction += delta;
-        const int step = static_cast<int>(std::trunc(fraction));
-        fraction -= step;
-        return step;
+        auto* viewport = area->viewport();
+        return viewport && (viewport == target || viewport->isAncestorOf(target));
     }
 
-    static void sendClick(QWidget* widget, const QPointF& local,
-                          const QPointF& global)
+    static QAbstractScrollArea* closestScrollable(QWidget* target)
     {
-        if (!widget)
-            return;
-        QMouseEvent press(QEvent::MouseButtonPress, local, local, global,
-                          Qt::LeftButton, Qt::LeftButton,
-                          Qt::NoModifier,
-                          Qt::MouseEventSynthesizedByApplication);
-        QCoreApplication::sendEvent(widget, &press);
-        QMouseEvent release(QEvent::MouseButtonRelease, local, local, global,
-                            Qt::LeftButton, Qt::NoButton,
-                            Qt::NoModifier,
-                            Qt::MouseEventSynthesizedByApplication);
-        QCoreApplication::sendEvent(widget, &release);
-    }
-
-    bool touchEvent(QObject* watched, QTouchEvent* touch)
-    {
-        auto* viewport = qobject_cast<QWidget*>(watched);
-        if (!viewport || touch->points().size() != 1)
-            return false;
-
-        // QAbstractScrollArea uses a child widget as its viewport.
-        auto* area = qobject_cast<QAbstractScrollArea*>(viewport->parentWidget());
-        const auto type = touch->type();
-        if (type == QEvent::TouchBegin) {
-            if (!area || area->viewport() != viewport)
-                return false;
+        for (QWidget* node = target; node; node = node->parentWidget()) {
+            auto* area = qobject_cast<QAbstractScrollArea*>(node);
+            if (!area || !isInsideViewport(target, area))
+                continue;
             prepare(area);
-            m_activeArea = area;
-            m_activeViewport = viewport;
-            m_startPos = touch->points().first().position();
-            m_lastPos = m_startPos;
-            m_lastGlobal = touch->points().first().globalPosition();
-            m_wasDrag = false;
-            m_verticalFraction = 0;
-            m_horizontalFraction = 0;
-            touch->accept();
+            if (area->verticalScrollBar()->maximum() > area->verticalScrollBar()->minimum()
+                || area->horizontalScrollBar()->maximum() > area->horizontalScrollBar()->minimum())
+                return area;
+        }
+        return nullptr;
+    }
+
+    static int pixelDelta(qreal distance, qreal& remainder)
+    {
+        remainder += distance;
+        const auto whole = static_cast<int>(std::trunc(remainder));
+        remainder -= whole;
+        return whole;
+    }
+
+    static void sendTap(QWidget* receiver, QPointF global)
+    {
+        if (!receiver)
+            return;
+        const QPointF local(receiver->mapFromGlobal(global.toPoint()));
+        QMouseEvent down(QEvent::MouseButtonPress, local, local, global,
+                         Qt::LeftButton, Qt::LeftButton, Qt::NoModifier,
+                         Qt::MouseEventSynthesizedByApplication);
+        QCoreApplication::sendEvent(receiver, &down);
+        QMouseEvent up(QEvent::MouseButtonRelease, local, local, global,
+                       Qt::LeftButton, Qt::NoButton, Qt::NoModifier,
+                       Qt::MouseEventSynthesizedByApplication);
+        QCoreApplication::sendEvent(receiver, &up);
+    }
+
+    static void repaintAll(QAbstractScrollArea* area)
+    {
+        if (!area)
+            return;
+        // Invalidating just the list viewport was insufficient: stale text
+        // remained in siblings and even overlapping dialogs. Force a complete
+        // top-level backing-store repaint after changing the scroll position.
+        if (auto* top = area->window())
+            top->repaint(top->rect());
+        else if (auto* viewport = area->viewport())
+            viewport->repaint(viewport->rect());
+    }
+
+    bool handleTouch(QWidget* receiver, QTouchEvent* event)
+    {
+        if (!receiver)
+            return false;
+        const auto type = event->type();
+        const auto& points = event->points();
+        if (type == QEvent::TouchBegin) {
+            if (points.size() != 1)
+                return false;
+            // QScrollArea forms have interactive children. Detect the
+            // scrollable ancestor of either the viewport or a child control.
+            auto* area = closestScrollable(receiver);
+            if (!area)
+                return false;
+            m_scroll = area;
+            m_touchTarget = receiver;
+            m_firstGlobal = m_lastGlobal = points.constFirst().globalPosition();
+            m_remY = m_remX = 0;
+            m_drag = false;
+            event->accept();
             return true;
         }
-        if (viewport != m_activeViewport || !m_activeArea)
+        if (!m_scroll || !m_touchTarget)
             return false;
+        // QTouchEvent can be delivered to an ancestor after the first event.
+        if (receiver != m_touchTarget && receiver != m_scroll->viewport())
+            return false;
+        const QPointF global = points.isEmpty() ? m_lastGlobal
+                                                 : points.constFirst().globalPosition();
         if (type == QEvent::TouchUpdate) {
-            const QPointF pos = touch->points().first().position();
-            m_lastGlobal = touch->points().first().globalPosition();
-            if ((pos - m_startPos).manhattanLength() > 9)
-                m_wasDrag = true;
-            if (m_wasDrag) {
-                const QPointF delta = pos - m_lastPos;
-                QScrollBar* vertical = m_activeArea->verticalScrollBar();
-                QScrollBar* horizontal = m_activeArea->horizontalScrollBar();
-                if (vertical && vertical->maximum() > vertical->minimum()) {
-                    const int dy = scrollAmount(delta.y(), m_verticalFraction);
-                    if (dy != 0) vertical->setValue(vertical->value() - dy);
-                }
-                if (horizontal && horizontal->maximum() > horizontal->minimum()
-                    && std::abs(delta.x()) > std::abs(delta.y()) * 1.3) {
-                    const int dx = scrollAmount(delta.x(), m_horizontalFraction);
-                    if (dx != 0) horizontal->setValue(horizontal->value() - dx);
-                }
-                // Explicitly invalidate the entire viewport after dragging.
-                // Synchronous repaint avoids Qt Android's stale scroll-blit
-                // tiles when rapidly dragging a version list.
-                m_activeViewport->repaint(m_activeViewport->rect());
+            if ((global - m_firstGlobal).manhattanLength() > 12)
+                m_drag = true;
+            if (m_drag) {
+                const QPointF delta = global - m_lastGlobal;
+                auto* sy = m_scroll->verticalScrollBar();
+                auto* sx = m_scroll->horizontalScrollBar();
+                if (sy && sy->maximum() > sy->minimum())
+                    sy->setValue(sy->value() - pixelDelta(delta.y(), m_remY));
+                if (sx && sx->maximum() > sx->minimum()
+                    && std::abs(delta.x()) > std::abs(delta.y()) * 1.5)
+                    sx->setValue(sx->value() - pixelDelta(delta.x(), m_remX));
+                repaintAll(m_scroll);
             }
-            m_lastPos = pos;
-            touch->accept();
+            m_lastGlobal = global;
+            event->accept();
             return true;
         }
         if (type == QEvent::TouchEnd || type == QEvent::TouchCancel) {
-            const bool click = !m_wasDrag && type == QEvent::TouchEnd;
-            const QPointF pos = touch->points().first().position();
-            const QPointF global = touch->points().first().globalPosition();
-            auto widget = m_activeViewport;
-            auto area = m_activeArea;
-            m_activeArea.clear();
-            m_activeViewport.clear();
-            if (click && widget) {
-                QWidget* receiver = widget;
-                // Item views must receive row-clicks on their viewport.
-                // Scrollable forms (settings pages) instead have real child
-                // widgets such as buttons, checkboxes and edit fields.
-                // Send a tap to that child, not the scroll area's viewport.
-                if (!qobject_cast<QAbstractItemView*>(area.data())) {
-                    if (auto* child = widget->childAt(pos.toPoint()))
-                        receiver = child;
-                }
-                const QPointF receiverLocal(
-                    receiver->mapFromGlobal(global.toPoint()));
-                sendClick(receiver, receiverLocal, global);
-            } else if (widget) {
-                widget->update(widget->rect());
+            const bool tap = !m_drag && type == QEvent::TouchEnd;
+            auto target = m_touchTarget;
+            auto scroll = m_scroll;
+            m_scroll.clear();
+            m_touchTarget.clear();
+            // Do not send a fake click after a drag; route an ordinary tap to
+            // the ORIGINAL child widget or the original item-view viewport.
+            if (tap && target) {
+                if (qobject_cast<QAbstractItemView*>(scroll.data()))
+                    target = scroll->viewport();
+                sendTap(target, global);
+            } else {
+                repaintAll(scroll);
             }
-            touch->accept();
+            event->accept();
             return true;
         }
         return false;
     }
 };
-
-} // namespace
+}
 
 void AndroidTouchScrolling::install(QObject* application)
 {
     if (application)
-        new TouchScrollInstaller(application);
+        new MobileTouchFilter(application);
 }
