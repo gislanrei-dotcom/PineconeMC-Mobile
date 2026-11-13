@@ -80,6 +80,11 @@ def main():
                     shutil.copyfileobj(raw, out)
                 if arm64(dest):
                     if not dest.name.endswith(".so"):
+                        if name == "lib/jexec":
+                            # ELF helper for java -jar execution; the app's
+                            # JNI launcher handles jar manifests directly.
+                            print("Skipping optional native jexec helper")
+                            continue
                         raise RuntimeError("Unexpected ELF binary: " + name)
                     original = dest.name
                     if not re.fullmatch(r"lib[A-Za-z0-9_+. -]+\.so", original):
